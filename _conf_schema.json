@@ -3,7 +3,7 @@
         "type": "int",
         "title": "每日抽取上限",
         "description": "每位用户每天可以抽取老婆的次数上限。",
-        "default": 3
+        "default": 1
     },
     "max_records": {
         "type": "int",
