@@ -1,0 +1,41 @@
+{
+    "daily_limit": {
+        "type": "int",
+        "title": "每日抽取上限",
+        "description": "每位用户每天可以抽取老婆的次数上限。",
+        "default": 3
+    },
+    "max_records": {
+        "type": "int",
+        "title": "全局记录上限",
+        "description": "跨群累计总记录条数。达到此数值后将自动清理最早的记录。",
+        "default": 500
+    },
+    "excluded_users": {
+        "type": "list",
+        "title": "排除用户列表",
+        "description": "在此列表中的QQ号将不会被抽中。请每行填写一个QQ号。",
+        "default": [],
+        "items": {
+            "type": "string"
+        }
+    },
+    "whitelist_groups": {
+        "type": "list",
+        "title": "群聊白名单",
+        "description": "若填写，则插件仅在这些群生效。留空则所有群生效。",
+        "default": [],
+        "items": {
+            "type": "string"
+        }
+    },
+    "blacklist_groups": {
+        "type": "list",
+        "title": "群聊黑名单",
+        "description": "在此列表中的群聊将禁用此插件功能。",
+        "default": [],
+        "items": {
+            "type": "string"
+        }
+    }
+}
