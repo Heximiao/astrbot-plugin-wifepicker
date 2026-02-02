@@ -328,7 +328,10 @@ class RandomWifePlugin(Star):
             }, options={
                 "viewport": {"width": 1920, "height": 1080},
                 "device_scale_factor": 2,
-                "animations": "disabled"
+                "animations": "disabled",
+                "type": "jpeg",
+                "quality": 100,
+                "device_scale_factor_level": "ultra",
             })
             yield event.image_result(url)
         except Exception as e:
