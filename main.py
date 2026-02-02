@@ -319,11 +319,23 @@ class RandomWifePlugin(Star):
 
         # 2. 获取数据 (假设你已经从 self.records 获取了 group_data)
         group_data = self.records.get("groups", {}).get(group_id, {}).get("records", [])
-        
+
+        group_name = group_id
+        try:
+            if event.get_platform_name() == "aiocqhttp":
+                info = await event.bot.api.call_action('get_group_info', group_id=int(group_id))
+                # 某些实现可能会多包一层 data
+                if isinstance(info, dict) and "data" in info and isinstance(info["data"], dict):
+                    info = info["data"]
+                group_name = info.get("group_name", group_id)
+        except Exception as e:
+            logger.warning(f"获取群名称失败: {e}")
+
         # 3. 渲染图片
         try:
             url = await self.html_render(graph_html, {
                 "group_id": group_id,
+                "group_name": group_name,
                 "records": group_data
             }, options={
                 "viewport": {"width": 1920, "height": 1080},
