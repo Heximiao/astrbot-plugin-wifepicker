@@ -89,18 +89,37 @@
         const container = document.getElementById('network-container');
         const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
         const options = {
-            nodes: { shape: 'circularImage' },
+            nodes: {
+                shape: 'circularImage',
+                font: { multi: 'html', strokeWidth: 4, strokeColor: '#ffffff', bold: true } // 增加描边宽度和粗体
+            },
+            edges: {
+                smooth: {
+                    type: 'curvedCW',
+                    roundness: 0.2
+                }
+            },
             physics: {
                 enabled: true,
                 barnesHut: {
-                    gravitationalConstant: -8000, // 增大排斥力
-                    centralGravity: 0.2,
-                    springLength: 300
+                    gravitationalConstant: -10000, // 进一步增大排斥力
+                    centralGravity: 0.1,
+                    springLength: 300,
+                    avoidOverlap: 1 // 避免节点重叠!
                 },
-                stabilization: { iterations: 150 } // 减少迭代次数，防止渲染超时导致 500
+                stabilization: {
+                    enabled: true,
+                    iterations: 200,
+                    updateInterval: 25,
+                    onlyDynamicEdges: false,
+                    fit: true
+                }
             }
         };
-        new vis.Network(container, data, options);
+        const network = new vis.Network(container, data, options);
+        network.once("stabilizationIterationsDone", function () {
+            network.fit();
+        });
     </script>
 </body>
 
