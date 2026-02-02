@@ -15,17 +15,21 @@ class RandomWifePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None): 
         super().__init__(context)
         self.config = config 
+
+        self.curr_dir = os.path.dirname(__file__)
         
         # 数据存储相对路径
         self.data_dir = os.path.join("data", "plugin_data", "random_wife")
         self.records_file = os.path.join(self.data_dir, "wife_records.json")
         self.active_file = os.path.join(self.data_dir, "active_users.json") 
+        self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
         
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir, exist_ok=True)
             
         self.records = self._load_json(self.records_file, {"date": "", "groups": {}})
         self.active_users = self._load_json(self.active_file, {})
+        self.forced_records = self._load_json(self.forced_file, {})
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
 
     def _load_json(self, path, default):
@@ -210,6 +214,126 @@ class RandomWifePlugin(Star):
         res.append(f"\n剩余次数：{max(0, daily_limit - len(user_recs))}次")
         yield event.plain_result("\n".join(res))
 
+
+    @filter.command("强娶")
+    async def force_marry(self, event: AstrMessageEvent):
+        if event.is_private_chat():
+            yield event.plain_result("此功能仅在群聊中可用哦~")
+            return
+
+        user_id = str(event.get_sender_id())
+        group_id = str(event.get_group_id())
+        now = time.time()
+        
+        # 从配置读取 CD 天数
+        cd_days = self.config.get("force_marry_cd", 3)
+        cool_down = cd_days * 24 * 3600 
+        
+        # --- 分群冷却核心逻辑 ---
+        if group_id not in self.forced_records:
+            self.forced_records[group_id] = {}
+        
+        last_time = self.forced_records[group_id].get(user_id, 0)
+        
+        if now - last_time < cool_down:
+            remaining = cool_down - (now - last_time)
+            days = int(remaining // 86400)
+            hours = int((remaining % 86400) // 3600)
+            mins = int((remaining % 3600) // 60)
+            yield event.plain_result(f"你已经强娶过啦！\n请等待：{days}天{hours}小时{mins}分后再试。")
+            return
+
+        # 获取目标
+        target_id = None
+        for component in event.message_obj.message:
+            if isinstance(component, Comp.At):
+                target_id = str(component.qq)
+                break
+        
+        if not target_id or target_id == "all":
+            yield event.plain_result("请 @ 一个你想强娶的人。")
+            return
+        
+        if target_id == user_id:
+            yield event.plain_result("不能娶自己！")
+            return
+
+        # 获取名字
+        target_name = f"用户({target_id})"
+        try:
+            if event.get_platform_name() == "aiocqhttp":
+                assert isinstance(event, AiocqhttpMessageEvent)
+                members = await event.bot.api.call_action('get_group_member_list', group_id=int(group_id))
+                for m in members:
+                    if str(m.get("user_id")) == target_id:
+                        target_name = m.get("card") or m.get("nickname") or target_name
+                        break
+        except: pass
+
+        # 覆盖今日记录
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self.records.get("date") != today:
+            self.records = {"date": today, "groups": {}}
+        
+        if group_id not in self.records["groups"]: 
+            self.records["groups"][group_id] = {"records": []}
+        
+        # 移除该群该用户今日的其他老婆记录
+        self.records["groups"][group_id]["records"] = [
+            r for r in self.records["groups"][group_id]["records"] if r["user_id"] != user_id
+        ]
+        
+        # 插入强娶记录
+        self.records["groups"][group_id]["records"].append({
+            "user_id": user_id, "wife_id": target_id, "wife_name": target_name,
+            "timestamp": datetime.now().isoformat(), "forced": True
+        })
+        
+        # --- 更新该群的强娶冷却时间 ---
+        self.forced_records[group_id][user_id] = now
+        
+        self._save_json(self.records_file, self.records)
+        self._save_json(self.forced_file, self.forced_records)
+
+        avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
+        chain = [
+            Comp.At(qq=user_id),
+            Comp.Plain(f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"),
+            Comp.Image.fromURL(avatar_url)
+        ]
+        yield event.chain_result(chain)
+
+
+    @filter.command("关系图")
+    async def show_graph(self, event: AstrMessageEvent):
+        group_id = str(event.get_group_id())
+        
+        # 1. 读取模板文件内容
+        template_path = os.path.join(self.curr_dir, "graph_template.html")
+        if not os.path.exists(template_path):
+            yield event.plain_result(f"错误：找不到模板文件 {template_path}")
+            return
+            
+        with open(template_path, "r", encoding="utf-8") as f:
+            graph_html = f.read()
+
+        # 2. 获取数据 (假设你已经从 self.records 获取了 group_data)
+        group_data = self.records.get("groups", {}).get(group_id, {}).get("records", [])
+        
+        # 3. 渲染图片
+        try:
+            url = await self.html_render(graph_html, {
+                "group_id": group_id,
+                "records": group_data
+            }, options={
+                "viewport": {"width": 1920, "height": 1080},
+                "device_scale_factor": 2,
+                "animations": "disabled"
+            })
+            yield event.image_result(url)
+        except Exception as e:
+            yield event.plain_result(f"渲染失败: {e}")
+
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录")
     async def reset_records(self, event: AstrMessageEvent):
@@ -222,10 +346,11 @@ class RandomWifePlugin(Star):
         if not self._is_allowed_group(str(event.get_group_id())): return
         daily_limit = self.config.get("daily_limit", 3)
         help_text = (
-            "===== 🌸 抽老婆帮助 =====\n"
+           "===== 🌸 抽老婆帮助 =====\n"
             "1. 【抽老婆】：随机抽取今日老婆\n"
-            "2. 【我的老婆】：查看今日历史与次数\n"
-            "3. 【重置记录】：(管理员) 清空数据\n"
+            "2. 【强娶 @某人】：强行更换今日老婆（3天冷却）\n"
+            "3. 【我的老婆】：查看今日历史与次数\n"
+            "4. 【重置记录】：(管理员) 清空数据\n"
             f"当前每日上限：{daily_limit}次\n"
             "注：仅限30天内发言且当前在群的活跃群友。"
         )
@@ -234,3 +359,4 @@ class RandomWifePlugin(Star):
     async def terminate(self):
         self._save_json(self.records_file, self.records)
         self._save_json(self.active_file, self.active_users)
+        self._save_json(self.forced_file, self.forced_records)

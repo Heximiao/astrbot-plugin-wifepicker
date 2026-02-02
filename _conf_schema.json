@@ -5,6 +5,12 @@
         "description": "每位用户每天可以抽取老婆的次数上限。",
         "default": 1
     },
+    "force_marry_cd": {
+        "type": "int",
+        "title": "强娶冷却天数",
+        "description": "一个人每隔多少天可以强娶一次别人。",
+        "default": 3
+    },
     "max_records": {
         "type": "int",
         "title": "全局记录上限",
@@ -14,28 +20,19 @@
     "excluded_users": {
         "type": "list",
         "title": "排除用户列表",
-        "description": "在此列表中的QQ号将不会被抽中。请每行填写一个QQ号。",
-        "default": [],
-        "items": {
-            "type": "string"
-        }
+        "description": "在此列表中的QQ号将不会被抽中。",
+        "default": []
     },
     "whitelist_groups": {
         "type": "list",
         "title": "群聊白名单",
-        "description": "若填写，则插件仅在这些群生效。留空则所有群生效。",
-        "default": [],
-        "items": {
-            "type": "string"
-        }
+        "description": "若填写，则插件仅在这些群生效。",
+        "default": []
     },
     "blacklist_groups": {
         "type": "list",
         "title": "群聊黑名单",
         "description": "在此列表中的群聊将禁用此插件功能。",
-        "default": [],
-        "items": {
-            "type": "string"
-        }
+        "default": []
     }
 }
