@@ -9,6 +9,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent 
 import astrbot.api.message_components as Comp
+from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 @register("random_wife", "Gemini", "活跃成员抽老婆(实时成员校验版)", "2.7.3")
 class RandomWifePlugin(Star):
@@ -19,7 +20,7 @@ class RandomWifePlugin(Star):
         self.curr_dir = os.path.dirname(__file__)
         
         # 数据存储相对路径
-        self.data_dir = os.path.join("data", "plugin_data", "random_wife")
+        self.data_dir = os.path.join(get_astrbot_plugin_data_path(), "random_wife")
         self.records_file = os.path.join(self.data_dir, "wife_records.json")
         self.active_file = os.path.join(self.data_dir, "active_users.json") 
         self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
