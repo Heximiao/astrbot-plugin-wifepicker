@@ -13,27 +13,31 @@
             height: 100%;
             background: #ffffff;
             overflow: hidden;
+            font-family: "Microsoft YaHei", sans-serif;
         }
 
         #network-container {
             width: 100%;
-            height: 100vh;
+            /* 预留 80px 给 header，保证不和图谱重叠 */
+            height: calc(100vh - 80px);
+            position: relative;
         }
 
-        /* 标题往上挪，并增加清晰度 */
         .header {
-            position: absolute;
-            top: 10px;
-            /* 往上挪 */
-            left: 0;
             width: 100%;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             text-align: center;
             color: #000000;
-            font-family: "Microsoft YaHei", sans-serif;
             font-size: 32px;
-            /* 调大标题 */
             font-weight: bold;
+            background-color: #fff;
             z-index: 10;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            /* 保证标题在最上层 */
+            position: relative;
         }
     </style>
 </head>
@@ -66,10 +70,11 @@
                         color: { border: '#4facfe', background: '#ffffff' },
                         font: {
                             color: '#000000',
-                            size: 18, // 增大名字字体
+                            size: 18,
                             vadjust: 55, // 名字向下偏移，不挡头像
-                            strokeWidth: 2, // 增加文字描边，防止发虚
-                            strokeColor: '#ffffff'
+                            strokeWidth: 5, // 强描边
+                            strokeColor: '#ffffff',
+                            bold: { color: '#000000', size: 18, vadjust: 55 }
                         }
                     });
                 }
@@ -91,7 +96,7 @@
         const options = {
             nodes: {
                 shape: 'circularImage',
-                font: { multi: 'html', strokeWidth: 4, strokeColor: '#ffffff', bold: true } // 增加描边宽度和粗体
+                font: { face: 'Microsoft YaHei' }
             },
             edges: {
                 smooth: {
@@ -102,10 +107,10 @@
             physics: {
                 enabled: true,
                 barnesHut: {
-                    gravitationalConstant: -10000, // 进一步增大排斥力
+                    gravitationalConstant: -10000,
                     centralGravity: 0.1,
                     springLength: 300,
-                    avoidOverlap: 1 // 避免节点重叠!
+                    avoidOverlap: 2
                 },
                 stabilization: {
                     enabled: true,
