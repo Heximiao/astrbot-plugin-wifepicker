@@ -9,8 +9,8 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent 
 import astrbot.api.message_components as Comp
+from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
-@register("random_wife", "Gemini", "活跃成员抽老婆(实时成员校验版)", "2.7.3")
 class RandomWifePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None): 
         super().__init__(context)
@@ -19,7 +19,7 @@ class RandomWifePlugin(Star):
         self.curr_dir = os.path.dirname(__file__)
         
         # 数据存储相对路径
-        self.data_dir = os.path.join("data", "plugin_data", "random_wife")
+        self.data_dir = os.path.join(get_astrbot_plugin_data_path(), "random_wife")
         self.records_file = os.path.join(self.data_dir, "wife_records.json")
         self.active_file = os.path.join(self.data_dir, "active_users.json") 
         self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
@@ -319,16 +319,60 @@ class RandomWifePlugin(Star):
 
         # 2. 获取数据 (假设你已经从 self.records 获取了 group_data)
         group_data = self.records.get("groups", {}).get(group_id, {}).get("records", [])
-        
+
+        group_name = "未命名群聊"
+        user_map = {}
+        try:
+            if event.get_platform_name() == "aiocqhttp":
+                # 获取群信息
+                info = await event.bot.api.call_action('get_group_info', group_id=int(group_id))
+                if isinstance(info, dict) and "data" in info and isinstance(info["data"], dict):
+                    info = info["data"]
+                group_name = info.get("group_name", "未命名群聊")
+
+                # 获取群成员列表构建映射
+                members = await event.bot.api.call_action('get_group_member_list', group_id=int(group_id))
+                if isinstance(members, dict) and "data" in members and isinstance(members["data"], list):
+                    members = members["data"]
+                
+                if isinstance(members, list):
+                    for m in members:
+                        uid = str(m.get("user_id"))
+                        name = m.get("card") or m.get("nickname") or uid
+                        user_map[uid] = name
+
+        except Exception as e:
+            logger.warning(f"获取群信息失败: {e}")
+
         # 3. 渲染图片
+        # 根据节点数量动态计算高度，避免拥挤
+        unique_nodes = set()
+        for r in group_data:
+            unique_nodes.add(str(r.get("user_id")))
+            unique_nodes.add(str(r.get("wife_id")))
+        node_count = len(unique_nodes)
+        
+        # 基础高度1080，每超过10个节点增加60px
+        view_height = 1080
+        if node_count > 10:
+            view_height = 1080 + (node_count - 10) * 60
+            
+        # 从配置中获取迭代次数
+        iterations = self.config.get("iterations", 1000)
+            
         try:
             url = await self.html_render(graph_html, {
                 "group_id": group_id,
-                "records": group_data
+                "group_name": group_name,
+                "user_map": user_map,
+                "records": group_data,
+                "iterations": iterations
             }, options={
-                "viewport": {"width": 1920, "height": 1080},
+                "viewport": {"width": 1920, "height": view_height},
                 "device_scale_factor": 2,
-                "animations": "disabled"
+                "type": "jpeg",
+                "quality": 100,
+                "device_scale_factor_level": "ultra",
             })
             yield event.image_result(url)
         except Exception as e:
@@ -355,6 +399,125 @@ class RandomWifePlugin(Star):
             "注：仅限30天内发言且当前在群的活跃群友。"
         )
         yield event.plain_result(help_text)
+
+    @filter.command("debug_graph")
+    async def debug_graph(self, event: AstrMessageEvent):
+        '''
+        调试关系图渲染
+        '''
+        # Mock Data
+        mock_records = [
+            {"user_id": "1001", "wife_id": "1002", "wife_name": "User B", "forced": False},
+            {"user_id": "1002", "wife_id": "1003", "wife_name": "User C", "forced": True},
+            {"user_id": "1003", "wife_id": "1001", "wife_name": "User A", "forced": False},
+            {"user_id": "1004", "wife_id": "1005", "wife_name": "User E", "forced": False},
+            {"user_id": "1005", "wife_id": "1004", "wife_name": "User D", "forced": True},
+            {"user_id": "1006", "wife_id": "1007", "wife_name": "User F", "forced": False},
+            {"user_id": "1007", "wife_id": "1006", "wife_name": "User G", "forced": True},
+            {"user_id": "1008", "wife_id": "1006", "wife_name": "User G", "forced": True},
+            {"user_id": "1009", "wife_id": "1006", "wife_name": "User G", "forced": True},
+            {"user_id": "1010", "wife_id": "1006", "wife_name": "User G", "forced": True},
+            {"user_id": "1011", "wife_id": "1006", "wife_name": "User G", "forced": True},
+            {"user_id": "1012", "wife_id": "1011", "wife_name": "User G", "forced": True},
+            {"user_id": "1013", "wife_id": "1012", "wife_name": "User G", "forced": True},
+            {"user_id": "1014", "wife_id": "1013", "wife_name": "User G", "forced": True},
+            {"user_id": "1015", "wife_id": "1014", "wife_name": "User G", "forced": True},
+            {"user_id": "1016", "wife_id": "1015", "wife_name": "User G", "forced": True},
+            {"user_id": "1017", "wife_id": "1016", "wife_name": "User G", "forced": True},
+            {"user_id": "1018", "wife_id": "1009", "wife_name": "User G", "forced": True},
+            {"user_id": "1019", "wife_id": "1006", "wife_name": "User G", "forced": True},
+            {"user_id": "1020", "wife_id": "1010", "wife_name": "User G", "forced": True},
+            {"user_id": "1021", "wife_id": "1011", "wife_name": "User G", "forced": True},
+            {"user_id": "1022", "wife_id": "1012", "wife_name": "User G", "forced": True},
+            {"user_id": "1023", "wife_id": "1013", "wife_name": "User G", "forced": True},
+            {"user_id": "1024", "wife_id": "1014", "wife_name": "User G", "forced": True},
+            {"user_id": "1025", "wife_id": "1015", "wife_name": "User G", "forced": True},
+            {"user_id": "1026", "wife_id": "1016", "wife_name": "User G", "forced": True},
+            {"user_id": "1027", "wife_id": "1010", "wife_name": "User G", "forced": True},
+
+
+        ]
+
+        mock_user_map = {
+            "1001": "Alice (1001)",
+            "1002": "Bob (1002)", 
+            "1003": "Charlie (1003)",
+            "1004": "David (1004)",
+            "1005": "Eve (1005)",
+            "1006": "Frank (1006)",
+            "1007": "Grace (1007)",
+            "1008": "Hank (1008)",
+            "1009": "Ivy (1009)",
+            "1010": "Jack (1010)",
+            "1011": "Jill (1011)",
+            "1012": "John (1012)",
+            "1013": "Julia (1013)",
+            "1014": "Juliet (1014)",
+            "1015": "Justin (1015)",
+            "1016": "Katie (1016)",
+            "1017": "Kevin (1017)",
+            "1018": "Katie (1018)",
+            "1019": "Katie (1019)",
+            "1020": "Katie (1020)",
+            "1021": "Kaie (1021)",
+            "1022": "Katie (1022)",
+            "1023": "Katie (1023)",
+            "1024": "Katie (1024)",
+            "1025": "Katie (1025)",
+            "1026": "Katie (1026)",
+            "1027": "Katie (1027)",
+        }
+
+        # 1. Save HTML for inspection
+        with open(os.path.join(self.curr_dir, "graph_template.html"), "r", encoding="utf-8") as f:
+            template_content = f.read()
+
+        import jinja2
+        env = jinja2.Environment()
+        template = env.from_string(template_content)
+        html_content = template.render(
+            group_name="Debug Group",
+            records=mock_records,
+            user_map=mock_user_map,
+            iterations=1000 # Debug default to strict
+        )
+        
+        debug_html_path = os.path.join(self.curr_dir, "debug_output.html")
+        with open(debug_html_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        
+        yield event.plain_result(f"Debugging... HTML saved to {debug_html_path}")
+
+        # 2. Render Image using AstrBot internal API
+        # Calculate dynamic height based on node count to prevent overcrowding
+        unique_nodes = set()
+        for r in mock_records:
+            unique_nodes.add(str(r.get("user_id")))
+            unique_nodes.add(str(r.get("wife_id")))
+        node_count = len(unique_nodes)
+        
+        # Base height 1080, add 60px for every node above 10
+        view_height = 1080
+        if node_count > 10:
+            view_height = 1080 + (node_count - 10) * 60
+
+        try:
+            url = await self.html_render(template_content, {
+                "group_name": "Debug Group",
+                "records": mock_records,
+                "user_map": mock_user_map,
+                "iterations": 1000
+            }, options={
+                "viewport": {"width": 1920, "height": view_height},
+                "device_scale_factor": 2,
+                "type": "jpeg",
+                "quality": 100,
+                "device_scale_factor_level": "ultra",
+            })
+            yield event.image_result(url)
+        except Exception as e:
+            logger.error(f"Debug render failed: {e}")
+            yield event.plain_result(f"Render failed: {e}")
 
     async def terminate(self):
         self._save_json(self.records_file, self.records)

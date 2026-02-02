@@ -1,38 +1,49 @@
 {
     "daily_limit": {
         "type": "int",
-        "title": "每日抽取上限",
-        "description": "每位用户每天可以抽取老婆的次数上限。",
+        "description": "每日抽取上限",
+        "hint": "每位用户每天可以抽取老婆的次数上限。",
         "default": 1
     },
     "force_marry_cd": {
         "type": "int",
-        "title": "强娶冷却天数",
-        "description": "一个人每隔多少天可以强娶一次别人。",
+        "description": "强娶冷却天数",
+        "hint": "一个人每隔多少天可以强娶一次别人。",
         "default": 3
     },
     "max_records": {
         "type": "int",
-        "title": "全局记录上限",
-        "description": "跨群累计总记录条数。达到此数值后将自动清理最早的记录。",
+        "description": "全局记录上限",
+        "hint": "跨群累计总记录条数。达到此数值后将自动清理最早的记录。",
         "default": 500
     },
     "excluded_users": {
         "type": "list",
-        "title": "排除用户列表",
-        "description": "在此列表中的QQ号将不会被抽中。",
+        "description": "排除用户列表",
+        "hint": "在此列表中的QQ号将不会被抽中。",
         "default": []
     },
     "whitelist_groups": {
         "type": "list",
-        "title": "群聊白名单",
-        "description": "若填写，则插件仅在这些群生效。",
+        "description": "群聊白名单",
+        "hint": "若填写，则插件仅在这些群生效。",
         "default": []
     },
     "blacklist_groups": {
         "type": "list",
-        "title": "群聊黑名单",
-        "description": "在此列表中的群聊将禁用此插件功能。",
+        "description": "群聊黑名单",
+        "hint": "在此列表中的群聊将禁用此插件功能。",
         "default": []
+    },
+    "iterations": {
+        "type": "int",
+        "description": "关系图生成迭代次数",
+        "hint": "控制关系图生成的精细度。数值越小图谱淫乱度越高，但生成的结果可能会越难辨识。",
+        "default": 150,
+        "slider": {
+            "min": 30,
+            "max": 1000,
+            "step": 50
+        }
     }
 }

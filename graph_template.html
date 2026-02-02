@@ -1,39 +1,63 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #ffffff; overflow: hidden; }
-        #network-container { width: 100%; height: 100vh; }
-        
-        /* 标题往上挪，并增加清晰度 */
-        .header { 
-            position: absolute; 
-            top: 10px; /* 往上挪 */
-            left: 0; 
-            width: 100%; 
-            text-align: center; 
-            color: #000000; 
-            font-family: "Microsoft YaHei", sans-serif; 
-            font-size: 32px; /* 调大标题 */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            overflow: hidden;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+
+        #network-container {
+            width: 100%;
+            /* 预留 80px 给 header，保证不和图谱重叠 */
+            height: calc(100vh - 80px);
+            position: relative;
+        }
+
+        .header {
+            width: 100%;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #000000;
+            font-size: 32px;
             font-weight: bold;
+            background-color: #fff;
             z-index: 10;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            /* 保证标题在最上层 */
+            position: relative;
         }
     </style>
 </head>
+
 <body>
-    <div class="header">🌸 群 {{ group_id }} 今日老婆羁绊图谱 🌸</div>
+    <div class="header">🌸 群 {{ group_name }} 今日老婆羁绊图谱 🌸</div>
     <div id="network-container"></div>
 
     <script>
         const raw_data = {{ records | tojson }};
+        const user_map = {{ user_map | tojson }} || {};
         const nodes = [];
         const edges = [];
         const userSet = new Set();
 
         raw_data.forEach(r => {
-            [{id: r.user_id, name: "用户"+r.user_id}, {id: r.wife_id, name: r.wife_name}].forEach(u => {
+            const userName = user_map[r.user_id] || "用户" + r.user_id;
+            const wifeName = user_map[r.wife_id] || r.wife_name;
+
+            [{ id: r.user_id, name: userName }, { id: r.wife_id, name: wifeName }].forEach(u => {
                 if (!userSet.has(u.id)) {
                     userSet.add(u.id);
                     nodes.push({
@@ -42,14 +66,15 @@
                         shape: 'circularImage',
                         image: `https://q4.qlogo.cn/headimg_dl?dst_uin=${u.id}&spec=640`,
                         borderWidth: 6,
-                        size: 50, // 增大头像尺寸，更清晰
+                        size: 90, // 放大头像 (50 -> 70)
                         color: { border: '#4facfe', background: '#ffffff' },
-                        font: { 
-                            color: '#000000', 
-                            size: 18, // 增大名字字体
-                            vadjust: 55, // 名字向下偏移，不挡头像
-                            strokeWidth: 2, // 增加文字描边，防止发虚
-                            strokeColor: '#ffffff'
+                        font: {
+                            color: '#000000',
+                            size: 44, // 放大文字 (18 -> 26)
+                            vadjust: 40, // 调整文字偏移，适应大头像
+                            strokeWidth: 6, // 增加描边
+                            strokeColor: '#ffffff',
+                            bold: { color: '#000000', size: 44, vadjust: 40 }
                         }
                     });
                 }
@@ -61,26 +86,46 @@
                 label: r.forced ? "强娶" : "抽中",
                 arrows: 'to',
                 color: { color: r.forced ? '#ff4d4f' : '#1890ff', width: 4 },
-                font: { align: 'middle', color: '#444', size: 16, background: '#ffffff' },
-                length: 300 // 拉开节点间距，防止名字重叠
+                font: { align: 'middle', color: '#444', size: 40, background: '#ffffff' },
+                length: 600 // 拉开节点间距
             });
         });
 
         const container = document.getElementById('network-container');
         const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
         const options = {
-            nodes: { shape: 'circularImage' },
+            nodes: {
+                shape: 'circularImage',
+                font: { face: 'Microsoft YaHei' }
+            },
+            edges: {
+                smooth: {
+                    type: 'curvedCW',
+                    roundness: 0.2
+                }
+            },
             physics: {
                 enabled: true,
-                barnesHut: { 
-                    gravitationalConstant: -8000, // 增大排斥力
-                    centralGravity: 0.2, 
-                    springLength: 300 
+                barnesHut: {
+                    gravitationalConstant: -14000, // 进一步增大排斥力
+                    centralGravity: 0.1,
+                    springLength: 500, // 大幅增加弹簧长度
+                    avoidOverlap: 0.7 // 防重叠参数，允许适当交叉，看着更自然
                 },
-                stabilization: { iterations: 150 } // 减少迭代次数，防止渲染超时导致 500
+                stabilization: {
+                    enabled: true,
+                    iterations: {{ iterations }},
+        updateInterval: 25,
+            onlyDynamicEdges: false,
+                fit: true
+                }
             }
         };
-        new vis.Network(container, data, options);
+        const network = new vis.Network(container, data, options);
+        network.once("stabilizationIterationsDone", function () {
+            network.fit();
+        });
     </script>
 </body>
+
 </html>
