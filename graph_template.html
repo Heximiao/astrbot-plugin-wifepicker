@@ -66,15 +66,15 @@
                         shape: 'circularImage',
                         image: `https://q4.qlogo.cn/headimg_dl?dst_uin=${u.id}&spec=640`,
                         borderWidth: 6,
-                        size: 50, // 增大头像尺寸，更清晰
+                        size: 90, // 放大头像 (50 -> 70)
                         color: { border: '#4facfe', background: '#ffffff' },
                         font: {
                             color: '#000000',
-                            size: 18,
-                            vadjust: 55, // 名字向下偏移，不挡头像
-                            strokeWidth: 5, // 强描边
+                            size: 44, // 放大文字 (18 -> 26)
+                            vadjust: 40, // 调整文字偏移，适应大头像
+                            strokeWidth: 6, // 增加描边
                             strokeColor: '#ffffff',
-                            bold: { color: '#000000', size: 18, vadjust: 55 }
+                            bold: { color: '#000000', size: 44, vadjust: 40 }
                         }
                     });
                 }
@@ -86,8 +86,8 @@
                 label: r.forced ? "强娶" : "抽中",
                 arrows: 'to',
                 color: { color: r.forced ? '#ff4d4f' : '#1890ff', width: 4 },
-                font: { align: 'middle', color: '#444', size: 16, background: '#ffffff' },
-                length: 300 // 拉开节点间距，防止名字重叠
+                font: { align: 'middle', color: '#444', size: 40, background: '#ffffff' },
+                length: 600 // 拉开节点间距
             });
         });
 
@@ -107,17 +107,17 @@
             physics: {
                 enabled: true,
                 barnesHut: {
-                    gravitationalConstant: -10000,
+                    gravitationalConstant: -14000, // 进一步增大排斥力
                     centralGravity: 0.1,
-                    springLength: 300,
-                    avoidOverlap: 2
+                    springLength: 500, // 大幅增加弹簧长度
+                    avoidOverlap: 0.7 // 防重叠参数，允许适当交叉，看着更自然
                 },
                 stabilization: {
                     enabled: true,
-                    iterations: 200,
-                    updateInterval: 25,
-                    onlyDynamicEdges: false,
-                    fit: true
+                    iterations: {{ iterations }},
+        updateInterval: 25,
+            onlyDynamicEdges: false,
+                fit: true
                 }
             }
         };
