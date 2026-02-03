@@ -217,6 +217,9 @@ class RandomWifePlugin(Star):
 
     @filter.command("强娶")
     async def force_marry(self, event: AstrMessageEvent):
+        '''
+        强娶+@要娶的那个人
+        '''
         if event.is_private_chat():
             yield event.plain_result("此功能仅在群聊中可用哦~")
             return
@@ -346,37 +349,42 @@ class RandomWifePlugin(Star):
 
         # 3. 渲染图片
         # 根据节点数量动态计算高度，避免拥挤
+        # 动态计算你想要裁剪的区域大小
         unique_nodes = set()
         for r in group_data:
             unique_nodes.add(str(r.get("user_id")))
             unique_nodes.add(str(r.get("wife_id")))
         node_count = len(unique_nodes)
         
-        # 基础高度1080，每超过10个节点增加60px
-        view_height = 1080
-        if node_count > 10:
-            view_height = 1080 + (node_count - 10) * 60
-            
-        # 从配置中获取迭代次数
-        iterations = self.config.get("iterations", 1000)
-            
+        # 假设我们想要从左上角 (0,0) 开始，裁剪一个动态高度的区域
+        clip_width = 1920
+        clip_height = 1080 + (max(0, node_count - 10) * 60)
+
         try:
             url = await self.html_render(graph_html, {
                 "group_id": group_id,
                 "group_name": group_name,
                 "user_map": user_map,
                 "records": group_data,
-                "iterations": iterations
+                "iterations": 150
             }, options={
-                "viewport": {"width": 1920, "height": view_height},
-                "device_scale_factor": 2,
                 "type": "jpeg",
                 "quality": 100,
-                "device_scale_factor_level": "ultra",
+                "device_scale_factor": 2,
+                "scale": "device",
+                # 必须传齐这四个参数，且必须是 int 或 float，不能是字符串
+                "clip": {
+                    "x": 0,
+                    "y": 0,
+                    "width": clip_width,
+                    "height": clip_height
+                },
+                "full_page": False, # 注意：使用 clip 时通常建议将 full_page 设为 False
+                "device_scale_factor_level": "ultra"
             })
             yield event.image_result(url)
         except Exception as e:
-            yield event.plain_result(f"渲染失败: {e}")
+            logger.error(f"渲染失败: {e}")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录")
@@ -395,6 +403,7 @@ class RandomWifePlugin(Star):
             "2. 【强娶 @某人】：强行更换今日老婆（3天冷却）\n"
             "3. 【我的老婆】：查看今日历史与次数\n"
             "4. 【重置记录】：(管理员) 清空数据\n"
+            "5. 【关系图】：查看群友老婆的关系\n"
             f"当前每日上限：{daily_limit}次\n"
             "注：仅限30天内发言且当前在群的活跃群友。"
         )
