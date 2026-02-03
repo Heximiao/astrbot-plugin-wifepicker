@@ -310,6 +310,7 @@ class RandomWifePlugin(Star):
     @filter.command("关系图")
     async def show_graph(self, event: AstrMessageEvent):
         group_id = str(event.get_group_id())
+        iter_count = self.config.get("iterations", 150)
         
         # 1. 读取模板文件内容
         template_path = os.path.join(self.curr_dir, "graph_template.html")
@@ -366,7 +367,7 @@ class RandomWifePlugin(Star):
                 "group_name": group_name,
                 "user_map": user_map,
                 "records": group_data,
-                "iterations": 150
+                "iterations": iter_count
             }, options={
                 "type": "jpeg",
                 "quality": 100,
