@@ -23,6 +23,7 @@ class RandomWifePlugin(Star):
         self.records_file = os.path.join(self.data_dir, "wife_records.json")
         self.active_file = os.path.join(self.data_dir, "active_users.json") 
         self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
+        self.rbq_stats_file = os.path.join(self.data_dir, "rbq_stats.json")
         
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir, exist_ok=True)
@@ -30,7 +31,53 @@ class RandomWifePlugin(Star):
         self.records = self._load_json(self.records_file, {"date": "", "groups": {}})
         self.active_users = self._load_json(self.active_file, {})
         self.forced_records = self._load_json(self.forced_file, {})
+        self.rbq_stats = self._load_json(self.rbq_stats_file, {})
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
+
+    def _clean_rbq_stats(self):
+        """
+        清理逻辑：
+        1. 移除 30 天前的强娶时间戳记录。
+        2. 若 30 天内次数为 0，直接删掉该用户。
+        3. 如果用户不在 active_users（一个月没说话）：
+           - 若次数 <= 4 且 距离最后一次发言已过 7 天，则删除。
+           - 若次数 > 4，则保留。
+        """
+        now = time.time()
+        thirty_days = 30 * 24 * 3600
+        seven_days = 7 * 24 * 3600
+        
+        new_stats = {}
+        for gid, users in self.rbq_stats.items():
+            new_users = {}
+            # 获取该群的活跃用户映射 {uid: last_ts}
+            active_group = self.active_users.get(gid, {})
+            
+            for uid, timestamps in users.items():
+                # 1. 只保留 30 天内的记录
+                valid_ts = [ts for ts in timestamps if now - ts < thirty_days]
+                count = len(valid_ts)
+                
+                # 2. 检查活跃状态删除规则
+                is_in_active = uid in active_group
+                last_active_ts = active_group.get(uid, 0)
+                
+                should_keep = True
+                if count == 0:
+                    should_keep = False
+                elif not is_in_active: # 不在活跃列表（即超过1个月没说话）
+                    # 如果次数不多(<=4) 且 距离最后一次说话已经超过7天
+                    if count <= 4 and (now - last_active_ts > seven_days):
+                        should_keep = False
+                
+                if should_keep:
+                    new_users[uid] = valid_ts
+            
+            if new_users:
+                new_stats[gid] = new_users
+        
+        self.rbq_stats = new_stats
+        self._save_json(self.rbq_stats_file, self.rbq_stats)
 
     def _load_json(self, path, default):
         if os.path.exists(path):
@@ -283,6 +330,14 @@ class RandomWifePlugin(Star):
         
         if group_id not in self.records["groups"]: 
             self.records["groups"][group_id] = {"records": []}
+
+        if group_id not in self.rbq_stats: self.rbq_stats[group_id] = {}    # 记录被强娶者的信息
+        if target_id not in self.rbq_stats[group_id]: self.rbq_stats[group_id][target_id] = []
+
+        # 添加当前时间戳到被强娶者的列表中
+        self.rbq_stats[group_id][target_id].append(time.time())
+        self._clean_rbq_stats() # 记录时顺便清理
+        self._save_json(self.rbq_stats_file, self.rbq_stats)
         
         # 移除该群该用户今日的其他老婆记录
         self.records["groups"][group_id]["records"] = [
@@ -390,12 +445,102 @@ class RandomWifePlugin(Star):
         except Exception as e:
             logger.error(f"渲染失败: {e}")
 
+    @filter.command("rbq排行")
+    async def rbq_ranking(self, event: AstrMessageEvent):
+        if event.is_private_chat():
+            yield event.plain_result("私聊看不了榜单哦~")
+            return
+            
+        group_id = str(event.get_group_id())
+        self._clean_rbq_stats() # 渲染前强制清理一次过期数据
+        
+        group_data = self.rbq_stats.get(group_id, {})
+        if not group_data:
+            yield event.plain_result("本群近30天还没有人被强娶过，大家都很有礼貌呢。")
+            return
+
+        # 获取群成员名字映射 (仿照关系图逻辑)
+        user_map = {}
+        try:
+            if event.get_platform_name() == "aiocqhttp":
+                members = await event.bot.api.call_action('get_group_member_list', group_id=int(group_id))
+                for m in members:
+                    uid = str(m.get("user_id"))
+                    user_map[uid] = m.get("card") or m.get("nickname") or uid
+        except: pass
+
+        # 构造排序数据
+        sorted_list = []
+        for uid, ts_list in group_data.items():
+            sorted_list.append({
+                "uid": uid,
+                "name": user_map.get(uid, f"用户({uid})"),
+                "count": len(ts_list)
+            })
+        
+        # 按次数从大到小排，取前10
+        sorted_list.sort(key=lambda x: x["count"], reverse=True)
+        top_10 = sorted_list[:10]
+
+        # 读取新模板
+        template_path = os.path.join(self.curr_dir, "rbq_ranking.html")
+        if not os.path.exists(template_path):
+            yield event.plain_result("错误：找不到排行模板 rbq_ranking.html")
+            return
+            
+        with open(template_path, "r", encoding="utf-8") as f:
+            template_content = f.read()
+
+        try:
+            # 计算数据行数，动态调整高度（10人大约550px就够了）
+            dynamic_height = 150 + (len(top_10) * 75) 
+            
+            # 渲染图片
+            url = await self.html_render(template_content, {
+                "group_id": group_id,
+                "ranking": top_10,
+                "title": "❤️ 群rbq月榜 ❤️"
+            }, options={
+                "type": "jpeg",
+                "quality": 100,
+                "full_page": False, # 关闭全页面，配合 clip 使用
+                "clip": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 400,  # 这里的宽度就是你想要的图片宽度
+                    "height": dynamic_height # 裁切的高度
+                },
+                "scale": "device",
+                "device_scale_factor_level": "ultra"
+            })
+            yield event.image_result(url)
+        except Exception as e:
+            logger.error(f"渲染RBQ排行失败: {e}")
+
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录")
     async def reset_records(self, event: AstrMessageEvent):
         self.records = {"date": datetime.now().strftime("%Y-%m-%d"), "groups": {}}
         self._save_json(self.records_file, self.records)
         yield event.plain_result("今日抽取记录已重置！")
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("重置强娶时间")
+    async def reset_force_cd(self, event: AstrMessageEvent):
+        group_id = str(event.get_group_id())
+        
+        # 逻辑：删除 forced_records 中当前群的数据
+        if hasattr(self, 'forced_records') and group_id in self.forced_records:
+            # 清空该群所有人的 CD 记录
+            self.forced_records[group_id] = {} 
+            
+            # 保存到 forced_marriage.json
+            self._save_json(self.forced_file, self.forced_records)
+            
+            logger.info(f"[Wife] 已重置群 {group_id} 的强娶冷却时间")
+            yield event.plain_result("✅ 本群强娶冷却时间已重置！现在大家可以再次强娶了。")
+        else:
+            yield event.plain_result("💡 本群目前没有人在冷却期内。")
 
     @filter.command("抽老婆帮助", alias={'老婆插件帮助'})
     async def show_help(self, event: AstrMessageEvent):
@@ -406,8 +551,9 @@ class RandomWifePlugin(Star):
             "1. 【抽老婆】：随机抽取今日老婆\n"
             "2. 【强娶 @某人】：强行更换今日老婆（3天冷却）\n"
             "3. 【我的老婆】：查看今日历史与次数\n"
-            "4. 【重置记录】：(管理员) 清空数据\n"
+            "4. 【重置记录】：(管理员) 清空数据（强娶记录不会清除）\n"
             "5. 【关系图】：查看群友老婆的关系\n"
+            "6. 【rbq排行】：展示近30天被强娶的次数排行\n"
             f"当前每日上限：{daily_limit}次\n"
             "注：仅限30天内发言且当前在群的活跃群友。"
         )
@@ -536,3 +682,4 @@ class RandomWifePlugin(Star):
         self._save_json(self.records_file, self.records)
         self._save_json(self.active_file, self.active_users)
         self._save_json(self.forced_file, self.forced_records)
+        self._save_json(self.rbq_stats_file, self.rbq_stats)

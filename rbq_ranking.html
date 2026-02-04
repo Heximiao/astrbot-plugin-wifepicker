@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; 
+            background: #fdf2f2; 
+            margin: 0; padding: 0;
+            width: 400px; /* 强制宽度与 clip 一致 */
+        }
+        .container { 
+            background: white; 
+            width: 400px;
+            overflow: hidden;
+        }
+        .header { 
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
+            color: white; padding: 20px; 
+            text-align: center; font-size: 20px; font-weight: bold; 
+        }
+        .item { 
+            display: flex; align-items: center; 
+            padding: 12px 15px; border-bottom: 1px solid #fff0f0; 
+        }
+        .rank { font-style: italic; font-weight: bold; width: 30px; color: #ffb3ba; }
+        .avatar { width: 45px; height: 45px; border-radius: 50%; margin: 0 12px; }
+        .name { flex: 1; font-size: 15px; color: #444; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .count-tag { background: #ffe5e5; color: #ff6b6b; padding: 3px 10px; border-radius: 10px; font-size: 12px; }
+        .footer { padding: 10px; text-align: center; font-size: 11px; color: #ff9a9e; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">{{ title }}</div>
+        {% for user in ranking %}
+        <div class="item">
+            <div class="rank">#{{ loop.index }}</div>
+            <img class="avatar" src="https://q4.qlogo.cn/headimg_dl?dst_uin={{ user.uid }}&spec=100">
+            <div class="name">{{ user.name }}</div>
+            <div class="count-tag">被强娶 {{ user.count }} 次</div>
+        </div>
+        {% endfor %}
+        <div class="footer">数据统计范围：最近30天</div>
+    </div>
+</body>
+</html>
