@@ -369,6 +369,16 @@ class RandomWifePlugin(Star):
     async def show_graph(self, event: AstrMessageEvent):
         group_id = str(event.get_group_id())
         iter_count = self.config.get("iterations", 150)
+
+        # --- 新增：读取 JS 文件内容 ---
+        vis_js_path = os.path.join(self.curr_dir, "vis-network.min.js")
+        vis_js_content = ""
+        if os.path.exists(vis_js_path):
+            with open(vis_js_path, "r", encoding="utf-8") as f:
+                vis_js_content = f.read()
+        else:
+            logger.error(f"找不到 JS 文件: {vis_js_path}")
+        # ---------------------------
         
         # 1. 读取模板文件内容
         template_path = os.path.join(self.curr_dir, "graph_template.html")
@@ -421,6 +431,7 @@ class RandomWifePlugin(Star):
 
         try:
             url = await self.html_render(graph_html, {
+                "vis_js_content": vis_js_content,
                 "group_id": group_id,
                 "group_name": group_name,
                 "user_map": user_map,

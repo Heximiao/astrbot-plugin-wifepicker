@@ -1,6 +1,6 @@
 name: astrbot_plugin_wifepicker
 desc: "全新的抽取群友当老婆的插件，可以增进群友的感情（）。只抽一个月内取发言过的人，并且可生成老婆关系图，还可以强娶哦~"
 display_name: 今日老婆
-version: v2.3.0
+version: v2.4.0
 author: 何夕
 repo: https://github.com/Heximiao/astrbot-plugin-wifepicker
