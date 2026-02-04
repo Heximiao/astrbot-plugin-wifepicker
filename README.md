@@ -22,6 +22,8 @@
 | `/重置记录` | - | 管理员 | 清空所有今日抽取记录 |
 | `/抽老婆帮助` | - | 用户 | 查看详细指令说明 |
 
+> 若在插件配置中开启 `keyword_trigger_enabled`，则也可直接发送关键词（如：`抽老婆`、`强娶`、`关系图`、`抽老婆帮助`）触发，无需指令前缀。
+
 ## 功能演示
 ![群内关系图](pic/关系图.jpg)
 ![强娶演示图](pic/演示图2.png)
@@ -45,3 +47,5 @@
 | `excluded_users` | list | [] | 永远不会被抽中的 QQ 号列表 |
 | `whitelist_groups` | list | [] | 白名单模式：仅在此列表中的群生效 |
 | `blacklist_groups` | list | [] | 黑名单模式：列表中的群将禁用插件 |
+| `keyword_trigger_enabled` | bool | false | 是否启用“关键词触发”（无需 `/` 前缀） |
+| `keyword_trigger_mode` | string | exact | 关键词匹配模式：`exact` / `starts_with` / `contains` |

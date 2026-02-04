@@ -45,5 +45,22 @@
             "max": 200,
             "step": 10
         }
+    },
+    "keyword_trigger_enabled": {
+        "type": "bool",
+        "description": "关键词触发",
+        "hint": "开启后，直接发送“抽老婆/强娶/关系图/抽老婆帮助”等关键词即可触发对应指令，无需指令前缀（如 /）。默认关闭以避免误触。",
+        "default": false
+    },
+    "keyword_trigger_mode": {
+        "type": "string",
+        "description": "关键词匹配模式",
+        "hint": "exact：消息去两端空白后必须完全相等；starts_with：以关键词开头即可；contains：包含关键词即可。建议保持 exact 以避免误触。",
+        "options": [
+            "exact",
+            "starts_with",
+            "contains"
+        ],
+        "default": "exact"
     }
 }
