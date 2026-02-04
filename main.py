@@ -165,7 +165,7 @@ class RandomWifePlugin(Star):
         if self.records.get("date") != today:
             self.records = {"date": today, "groups": {}}
 
-        daily_limit = self.config.get("daily_limit", 3)
+        daily_limit = self.config.get("daily_limit", 1)
         group_data = self.records.get("groups", {}).get(group_id, {"records": []})
         user_recs = [r for r in group_data["records"] if r["user_id"] == user_id]
         today_count = len(user_recs)
