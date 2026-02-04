@@ -3,7 +3,9 @@
 
 <head>
     <meta charset="utf-8">
-    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script>
+        {{ vis_js_content | safe }}
+    </script>
     <style>
         body,
         html {
@@ -86,7 +88,7 @@
                 label: r.forced ? "强娶" : "抽中",
                 arrows: {to: {enabled: true,scaleFactor: 3,type: 'arrow'}},
                 color: { color: r.forced ? '#ff4d4f' : '#1890ff', width: 4 },
-                font: { align: 'middle', color: '#444', size: 40, background: '#ffffff' },
+                font: { align: 'middle', color: '#444', size: 48, background: '#ffffff' },
                 length: 700 // 拉开节点间距
             });
         });
