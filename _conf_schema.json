@@ -62,5 +62,28 @@
             "contains"
         ],
         "default": "exact"
+    },
+    "auto_set_other_half": {
+        "type": "bool",
+        "description": "自动设置对方老婆",
+        "hint": "开启后，抽到老婆时若对方今天还没有老婆记录，将自动给对方设置“你”为老婆（对方仍可自行抽取/强娶，视每日上限而定）。默认关闭。",
+        "default": false
+    },
+    "auto_withdraw_enabled": {
+        "type": "bool",
+        "description": "定时自动撤回",
+        "hint": "开启后，将在发送老婆结果后延迟撤回消息以防刷屏。当前仅在 aiocqhttp/OneBot 平台可用（通过 delete_msg 实现）。默认关闭。",
+        "default": false
+    },
+    "auto_withdraw_delay_seconds": {
+        "type": "int",
+        "description": "自动撤回延迟(秒)",
+        "hint": "自动撤回延迟时间，单位秒。仅在开启“定时自动撤回”时生效。",
+        "default": 5,
+        "slider": {
+            "min": 1,
+            "max": 60,
+            "step": 1
+        }
     }
 }

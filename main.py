@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import random
@@ -64,6 +65,52 @@ except ModuleNotFoundError:
                 return keyword in text
             raise ValueError(f"Unknown MatchMode: {mode}")
 
+try:
+    from onebot_api import extract_message_id
+except ModuleNotFoundError:
+    from typing import Any, Mapping
+
+    def extract_message_id(resp: Any) -> Any:
+        if not isinstance(resp, Mapping):
+            return None
+        if "message_id" in resp:
+            return resp.get("message_id")
+        data = resp.get("data")
+        if isinstance(data, Mapping) and "message_id" in data:
+            return data.get("message_id")
+        return None
+
+try:
+    from waifu_relations import maybe_add_other_half_record
+except ModuleNotFoundError:
+    from typing import Any, MutableSequence
+
+    def maybe_add_other_half_record(
+        *,
+        records: MutableSequence[dict[str, Any]],
+        user_id: str,
+        user_name: str,
+        wife_id: str,
+        wife_name: str,
+        enabled: bool,
+        timestamp: str,
+    ) -> bool:
+        if not enabled:
+            return False
+        if any(str(r.get("user_id")) == str(wife_id) for r in records):
+            return False
+        records.append(
+            {
+                "user_id": str(wife_id),
+                "wife_id": str(user_id),
+                "wife_name": str(user_name),
+                "timestamp": timestamp,
+                "auto_set": True,
+                "auto_set_target_name": str(wife_name),
+            }
+        )
+        return True
+
 
 _DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
     KeywordRoute(keyword="今日老婆", action="draw_wife"),
@@ -82,6 +129,8 @@ class RandomWifePlugin(Star):
         self.config = config
 
         self.curr_dir = os.path.dirname(__file__)
+
+        self._withdraw_tasks: set[asyncio.Task] = set()
         
         # 数据存储相对路径
         self.data_dir = os.path.join(get_astrbot_plugin_data_path(), "random_wife")
@@ -159,6 +208,79 @@ class RandomWifePlugin(Star):
         if whitelist and group_id not in {str(g) for g in whitelist}:
             return False
         return True
+
+    def _ensure_today_records(self) -> None:
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self.records.get("date") != today:
+            self.records = {"date": today, "groups": {}}
+
+    def _get_group_records(self, group_id: str) -> list[dict]:
+        self._ensure_today_records()
+        if group_id not in self.records["groups"]:
+            self.records["groups"][group_id] = {"records": []}
+        return self.records["groups"][group_id]["records"]
+
+    def _auto_set_other_half_enabled(self) -> bool:
+        return bool(self.config.get("auto_set_other_half", False))
+
+    def _auto_withdraw_enabled(self) -> bool:
+        return bool(self.config.get("auto_withdraw_enabled", False))
+
+    def _auto_withdraw_delay_seconds(self) -> int:
+        raw = self.config.get("auto_withdraw_delay_seconds", 5)
+        try:
+            delay = int(raw)
+        except Exception:
+            delay = 5
+        return max(1, delay)
+
+    def _can_onebot_withdraw(self, event: AstrMessageEvent) -> bool:
+        return self._auto_withdraw_enabled() and event.get_platform_name() == "aiocqhttp"
+
+    async def _send_onebot_message(
+        self, event: AstrMessageEvent, *, message: list[dict]
+    ) -> object:
+        assert isinstance(event, AiocqhttpMessageEvent)
+
+        group_id = event.get_group_id()
+        if group_id:
+            resp = await event.bot.api.call_action(
+                "send_group_msg", group_id=int(group_id), message=message
+            )
+        else:
+            resp = await event.bot.api.call_action(
+                "send_private_msg",
+                user_id=int(event.get_sender_id()),
+                message=message,
+            )
+
+        message_id = extract_message_id(resp)
+        if message_id is None:
+            logger.warning(f"无法解析 send_*_msg 返回的 message_id: {resp!r}")
+        return message_id
+
+    def _schedule_onebot_delete_msg(self, client, *, message_id: object) -> None:
+        delay = self._auto_withdraw_delay_seconds()
+
+        async def _runner():
+            await asyncio.sleep(delay)
+            try:
+                await client.api.call_action("delete_msg", message_id=message_id)
+            except Exception as e:
+                logger.warning(f"自动撤回失败: {e}")
+
+        task = asyncio.create_task(_runner())
+        self._withdraw_tasks.add(task)
+        task.add_done_callback(self._withdraw_tasks.discard)
+
+    @staticmethod
+    def _resolve_member_name(
+        members: list[dict], *, user_id: str, fallback: str
+    ) -> str:
+        for m in members:
+            if str(m.get("user_id")) == str(user_id):
+                return m.get("card") or m.get("nickname") or fallback
+        return fallback
 
     def _record_active(self, event: AstrMessageEvent) -> None:
         group_id = event.get_group_id()
@@ -251,13 +373,9 @@ class RandomWifePlugin(Star):
         user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
         self._cleanup_inactive(group_id)
 
-        today = datetime.now().strftime("%Y-%m-%d")
-        if self.records.get("date") != today:
-            self.records = {"date": today, "groups": {}}
-
         daily_limit = self.config.get("daily_limit", 3)
-        group_data = self.records.get("groups", {}).get(group_id, {"records": []})
-        user_recs = [r for r in group_data["records"] if r["user_id"] == user_id]
+        group_records = self._get_group_records(group_id)
+        user_recs = [r for r in group_records if r["user_id"] == user_id]
         today_count = len(user_recs)
 
         if today_count >= daily_limit:
@@ -267,6 +385,24 @@ class RandomWifePlugin(Star):
                 wife_avatar = (
                     f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
                 )
+                if self._can_onebot_withdraw(event):
+                    message_id = await self._send_onebot_message(
+                        event,
+                        message=[
+                            {"type": "at", "data": {"qq": user_id}},
+                            {
+                                "type": "text",
+                                "data": {
+                                    "text": f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"
+                                },
+                            },
+                            {"type": "image", "data": {"file": wife_avatar}},
+                        ],
+                    )
+                    if message_id is not None:
+                        self._schedule_onebot_delete_msg(event.bot, message_id=message_id)
+                    return
+
                 chain = [
                     Comp.At(qq=user_id),
                     Comp.Plain(f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"),
@@ -274,9 +410,16 @@ class RandomWifePlugin(Star):
                 ]
                 yield event.chain_result(chain)
             else:
-                yield event.plain_result(
-                    f"你今天已经抽了{today_count}次老婆了，明天再来吧！"
-                )
+                text = f"你今天已经抽了{today_count}次老婆了，明天再来吧！"
+                if self._can_onebot_withdraw(event):
+                    message_id = await self._send_onebot_message(
+                        event, message=[{"type": "text", "data": {"text": text}}]
+                    )
+                    if message_id is not None:
+                        self._schedule_onebot_delete_msg(event.bot, message_id=message_id)
+                    return
+
+                yield event.plain_result(text)
             return
 
         # --- 增强：获取最新的群成员列表以过滤退群者 ---
@@ -327,38 +470,68 @@ class RandomWifePlugin(Star):
 
         wife_id = random.choice(pool)
         wife_name = f"用户({wife_id})"
+        user_name = event.get_sender_name() or f"用户({user_id})"
 
         try:
             if event.get_platform_name() == "aiocqhttp":
-                # 这里已经有 members 列表了，直接查名字
-                for m in members:
-                    if str(m.get("user_id")) == wife_id:
-                        wife_name = m.get("card") or m.get("nickname") or wife_name
-                        break
+                wife_name = self._resolve_member_name(
+                    members, user_id=wife_id, fallback=wife_name
+                )
+                user_name = self._resolve_member_name(
+                    members, user_id=user_id, fallback=user_name
+                )
         except Exception:
             pass
 
-        if group_id not in self.records["groups"]:
-            self.records["groups"][group_id] = {"records": []}
-        self.records["groups"][group_id]["records"].append(
+        timestamp = datetime.now().isoformat()
+        group_records.append(
             {
                 "user_id": user_id,
                 "wife_id": wife_id,
                 "wife_name": wife_name,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": timestamp,
             }
         )
+
+        maybe_add_other_half_record(
+            records=group_records,
+            user_id=user_id,
+            user_name=user_name,
+            wife_id=wife_id,
+            wife_name=wife_name,
+            enabled=self._auto_set_other_half_enabled(),
+            timestamp=timestamp,
+        )
+
         self._save_json(self.records_file, self.records)
 
         avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
+        suffix_text = (
+            "\n请好好对待她哦❤️~ \n"
+            f"剩余抽取次数：{max(0, daily_limit - today_count - 1)}次"
+        )
+        if self._can_onebot_withdraw(event):
+            message_id = await self._send_onebot_message(
+                event,
+                message=[
+                    {"type": "at", "data": {"qq": user_id}},
+                    {
+                        "type": "text",
+                        "data": {"text": f" 你的今日老婆是：\n\n【{wife_name}】\n"},
+                    },
+                    {"type": "image", "data": {"file": avatar_url}},
+                    {"type": "text", "data": {"text": suffix_text}},
+                ],
+            )
+            if message_id is not None:
+                self._schedule_onebot_delete_msg(event.bot, message_id=message_id)
+            return
+
         chain = [
             Comp.At(qq=user_id),
             Comp.Plain(f" 你的今日老婆是：\n\n【{wife_name}】\n"),
             Comp.Image.fromURL(avatar_url),
-            Comp.Plain(
-                "\n请好好对待她哦❤️~ \n"
-                f"剩余抽取次数：{max(0, daily_limit - today_count - 1)}次"
-            ),
+            Comp.Plain(suffix_text),
         ]
         yield event.chain_result(chain)
 
@@ -447,6 +620,8 @@ class RandomWifePlugin(Star):
 
         # 获取名字
         target_name = f"用户({target_id})"
+        user_name = event.get_sender_name() or f"用户({user_id})"
+        members = []
         try:
             if event.get_platform_name() == "aiocqhttp":
                 assert isinstance(event, AiocqhttpMessageEvent)
@@ -460,37 +635,40 @@ class RandomWifePlugin(Star):
                 ):
                     members = members["data"]
 
-                for m in members:
-                    if str(m.get("user_id")) == target_id:
-                        target_name = m.get("card") or m.get("nickname") or target_name
-                        break
+                target_name = self._resolve_member_name(
+                    members, user_id=target_id, fallback=target_name
+                )
+                user_name = self._resolve_member_name(
+                    members, user_id=user_id, fallback=user_name
+                )
         except Exception:
             pass
 
-        # 覆盖今日记录
-        today = datetime.now().strftime("%Y-%m-%d")
-        if self.records.get("date") != today:
-            self.records = {"date": today, "groups": {}}
-
-        if group_id not in self.records["groups"]:
-            self.records["groups"][group_id] = {"records": []}
+        group_records = self._get_group_records(group_id)
 
         # 移除该群该用户今日的其他老婆记录
-        self.records["groups"][group_id]["records"] = [
-            r
-            for r in self.records["groups"][group_id]["records"]
-            if r["user_id"] != user_id
-        ]
+        group_records[:] = [r for r in group_records if r["user_id"] != user_id]
 
         # 插入强娶记录
-        self.records["groups"][group_id]["records"].append(
+        timestamp = datetime.now().isoformat()
+        group_records.append(
             {
                 "user_id": user_id,
                 "wife_id": target_id,
                 "wife_name": target_name,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": timestamp,
                 "forced": True,
             }
+        )
+
+        maybe_add_other_half_record(
+            records=group_records,
+            user_id=user_id,
+            user_name=user_name,
+            wife_id=target_id,
+            wife_name=target_name,
+            enabled=self._auto_set_other_half_enabled(),
+            timestamp=timestamp,
         )
 
         # --- 更新该群的强娶冷却时间 ---
@@ -500,9 +678,23 @@ class RandomWifePlugin(Star):
         self._save_json(self.forced_file, self.forced_records)
 
         avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
+        text = f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"
+        if self._can_onebot_withdraw(event):
+            message_id = await self._send_onebot_message(
+                event,
+                message=[
+                    {"type": "at", "data": {"qq": user_id}},
+                    {"type": "text", "data": {"text": text}},
+                    {"type": "image", "data": {"file": avatar_url}},
+                ],
+            )
+            if message_id is not None:
+                self._schedule_onebot_delete_msg(event.bot, message_id=message_id)
+            return
+
         chain = [
             Comp.At(qq=user_id),
-            Comp.Plain(f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"),
+            Comp.Plain(text),
             Comp.Image.fromURL(avatar_url),
         ]
         yield event.chain_result(chain)
@@ -628,6 +820,7 @@ class RandomWifePlugin(Star):
             "5. 【关系图】：查看群友老婆的关系\n"
             f"当前每日上限：{daily_limit}次\n"
             "提示：可在配置开启“关键词触发”，直接发送关键词无需 / 前缀。\n"
+            "提示：可在配置开启“自动设置对方老婆 / 定时自动撤回”。\n"
             "注：仅限30天内发言且当前在群的活跃群友。"
         )
         yield event.plain_result(help_text)
@@ -755,3 +948,8 @@ class RandomWifePlugin(Star):
         self._save_json(self.records_file, self.records)
         self._save_json(self.active_file, self.active_users)
         self._save_json(self.forced_file, self.forced_records)
+
+        # 取消尚未执行的撤回任务，避免插件卸载后仍调用协议端。
+        for task in tuple(self._withdraw_tasks):
+            task.cancel()
+        self._withdraw_tasks.clear()

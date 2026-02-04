@@ -42,10 +42,13 @@
 
 | 配置键 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `daily_limit` | int | 3 | 每人每天可抽取的次数上限 |
+| `daily_limit` | int | 1 | 每人每天可抽取的次数上限 |
 | `max_records` | int | 500 | 全局 JSON 存储的最大记录条数 |
 | `excluded_users` | list | [] | 永远不会被抽中的 QQ 号列表 |
 | `whitelist_groups` | list | [] | 白名单模式：仅在此列表中的群生效 |
 | `blacklist_groups` | list | [] | 黑名单模式：列表中的群将禁用插件 |
 | `keyword_trigger_enabled` | bool | false | 是否启用“关键词触发”（无需 `/` 前缀） |
 | `keyword_trigger_mode` | string | exact | 关键词匹配模式：`exact` / `starts_with` / `contains` |
+| `auto_set_other_half` | bool | false | 自动设置对方老婆（对方当天无记录时才会生效） |
+| `auto_withdraw_enabled` | bool | false | 定时自动撤回（仅 aiocqhttp/OneBot 可用） |
+| `auto_withdraw_delay_seconds` | int | 5 | 自动撤回延迟秒数 |
