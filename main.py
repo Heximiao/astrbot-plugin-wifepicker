@@ -913,14 +913,20 @@ class RandomWifePlugin(Star):
 
         try:
             # 计算数据行数，动态调整高度（10人大约550px就够了）
-            dynamic_height = 150 + (len(top_10) * 75) 
+            #dynamic_height = 160 + (len(top_10) * 85) 
             
+            header_h = 100 
+            item_h = 60 
+            footer_h = 50
+
+            dynamic_height = header_h + (len(top_10) * item_h) + footer_h
             # 渲染图片
             url = await self.html_render(template_content, {
                 "group_id": group_id,
                 "ranking": top_10,
                 "title": "❤️ 群rbq月榜 ❤️"
-            }, options={
+            }, 
+            options={
                 "type": "jpeg",
                 "quality": 100,
                 "full_page": False, # 关闭全页面，配合 clip 使用
@@ -932,7 +938,8 @@ class RandomWifePlugin(Star):
                 },
                 "scale": "device",
                 "device_scale_factor_level": "ultra"
-            })
+            }
+            )
             yield event.image_result(url)
         except Exception as e:
             logger.error(f"渲染RBQ排行失败: {e}")
