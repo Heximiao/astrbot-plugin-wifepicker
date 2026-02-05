@@ -8,6 +8,7 @@
             background: #fdf2f2; 
             margin: 0; padding: 0;
             width: 400px; /* 强制宽度与 clip 一致 */
+            display: inline-block;
         }
         .container { 
             background: white; 
@@ -20,8 +21,12 @@
             text-align: center; font-size: 20px; font-weight: bold; 
         }
         .item { 
-            display: flex; align-items: center; 
-            padding: 12px 15px; border-bottom: 1px solid #fff0f0; 
+            display: flex; 
+            align-items: center; 
+            padding: 0 15px;         /* 去掉上下 padding，靠 height 撑开 */
+            height: 62px;            /* 关键：强制每一行高度为 80px */
+            border-bottom: 1px solid #fff0f0; 
+            box-sizing: border-box;  /* 确保 border 不额外增加高度 */
         }
         .rank { font-style: italic; font-weight: bold; width: 30px; color: #ffb3ba; }
         .avatar { width: 45px; height: 45px; border-radius: 50%; margin: 0 12px; }
