@@ -40,7 +40,7 @@
         <div class="header">{{ title }}</div>
         {% for user in ranking %}
         <div class="item">
-            <div class="rank">#{{ loop.index }}</div>
+            <div class="rank">#{{ user.rank }}</div>
             <img class="avatar" src="https://q4.qlogo.cn/headimg_dl?dst_uin={{ user.uid }}&spec=100&t={{ range(1, 99999) | random }}">
             <div class="name">{{ user.name }}</div>
             <div class="count-tag">被强娶 {{ user.count }} 次</div>

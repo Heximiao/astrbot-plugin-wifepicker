@@ -914,6 +914,12 @@ class RandomWifePlugin(Star):
         sorted_list.sort(key=lambda x: x["count"], reverse=True)
         top_10 = sorted_list[:10]
 
+        current_rank = 1
+        for i, user in enumerate(top_10):
+            if i > 0 and user["count"] < top_10[i-1]["count"]:
+                current_rank = i + 1  # 排名跳跃到当前位置
+            user["rank"] = current_rank
+
         # 读取新模板
         template_path = os.path.join(self.curr_dir, "rbq_ranking.html")
         if not os.path.exists(template_path):
