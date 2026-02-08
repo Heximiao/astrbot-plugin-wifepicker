@@ -1,10 +1,7 @@
 import asyncio
-import json
 import os
 import random
-import re
 import time
-#from datetime import datetime
 from datetime import datetime, timedelta
 
 import astrbot.api.message_components as Comp
@@ -18,58 +15,43 @@ from astrbot.core.star.filter.permission import PermissionTypeFilter
 from astrbot.core.star.star_handler import star_handlers_registry
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
+from .constants import DEFAULT_KEYWORD_ROUTES
+from .core import ConfigAccessor, DataStore, OneBotGateway
 from .keyword_trigger import KeywordRoute, KeywordRouter, MatchMode, PermissionLevel
-from .onebot_api import extract_message_id
 from .waifu_relations import maybe_add_other_half_record
-
-_DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
-    KeywordRoute(keyword="今日老婆", action="draw_wife"),
-    KeywordRoute(keyword="抽老婆", action="draw_wife"),
-    KeywordRoute(keyword="我的老婆", action="show_history"),
-    KeywordRoute(keyword="抽取历史", action="show_history"),
-    KeywordRoute(keyword="强娶", action="force_marry"),
-    KeywordRoute(keyword="关系图", action="show_graph"),
-    KeywordRoute(keyword="羁绊图谱", action="show_graph"),
-    KeywordRoute(keyword="rbq排行", action="rbq_ranking"),
-    KeywordRoute(keyword="抽老婆帮助", action="show_help"),
-    KeywordRoute(keyword="老婆插件帮助", action="show_help"),
-    KeywordRoute(
-        keyword="重置记录",
-        action="reset_records",
-        permission=PermissionLevel.ADMIN,
-    ),
-    KeywordRoute(
-        keyword="重置强娶时间",
-        action="reset_force_cd",
-        permission=PermissionLevel.ADMIN,
-    ),
-)
 
 class RandomWifePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
-        self.config = config
+        self.config = config or {}
+        self._config = ConfigAccessor(self.config)
 
         self.curr_dir = os.path.dirname(__file__)
 
         self._withdraw_tasks: set[asyncio.Task] = set()
-        
+
         # 数据存储相对路径
         self.data_dir = os.path.join(get_astrbot_plugin_data_path(), "random_wife")
-        self.records_file = os.path.join(self.data_dir, "wife_records.json")
-        self.active_file = os.path.join(self.data_dir, "active_users.json") 
-        self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
-        self.rbq_stats_file = os.path.join(self.data_dir, "rbq_stats.json")
-        
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir, exist_ok=True)
-            
-        self.records = self._load_json(self.records_file, {"date": "", "groups": {}})
-        self.active_users = self._load_json(self.active_file, {})
-        self.forced_records = self._load_json(self.forced_file, {})
-        self.rbq_stats = self._load_json(self.rbq_stats_file, {})
+        self._store = DataStore(
+            self.data_dir,
+            max_records_supplier=self._config.max_records,
+        )
+        self._gateway = OneBotGateway(
+            withdraw_tasks=self._withdraw_tasks,
+            delete_error_handler=self._handle_withdraw_error,
+        )
 
-        self._keyword_router = KeywordRouter(routes=_DEFAULT_KEYWORD_ROUTES)
+        self.records_file = str(self._store.records_file)
+        self.active_file = str(self._store.active_file)
+        self.forced_file = str(self._store.forced_file)
+        self.rbq_stats_file = str(self._store.rbq_stats_file)
+
+        self.records = self._store.records
+        self.active_users = self._store.active_users
+        self.forced_records = self._store.forced_records
+        self.rbq_stats = self._store.rbq_stats
+
+        self._keyword_router = KeywordRouter(routes=DEFAULT_KEYWORD_ROUTES)
         self._keyword_handlers = {
             "draw_wife": self._cmd_draw_wife,
             "show_history": self._cmd_show_history,
@@ -93,190 +75,102 @@ class RandomWifePlugin(Star):
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
 
+    @staticmethod
+    def _handle_withdraw_error(error: Exception) -> None:
+        logger.warning(f"自动撤回失败: {error}")
+
     def _clean_rbq_stats(self):
-        """
-        清理逻辑：
-        1. 移除 30 天前的强娶时间戳记录。
-        2. 若 30 天内次数为 0，直接删掉该用户。
-        3. 如果用户不在 active_users（一个月没说话）：
-           - 若次数 <= 4 且 距离最后一次发言已过 7 天，则删除。
-           - 若次数 > 4，则保留。
-        """
-        now = time.time()
-        thirty_days = 30 * 24 * 3600
-        seven_days = 7 * 24 * 3600
-        
-        new_stats = {}
-        for gid, users in self.rbq_stats.items():
-            new_users = {}
-            # 获取该群的活跃用户映射 {uid: last_ts}
-            active_group = self.active_users.get(gid, {})
-            
-            for uid, timestamps in users.items():
-                # 1. 只保留 30 天内的记录
-                valid_ts = [ts for ts in timestamps if now - ts < thirty_days]
-                count = len(valid_ts)
-                
-                # 2. 检查活跃状态删除规则
-                is_in_active = uid in active_group
-                last_active_ts = active_group.get(uid, 0)
-                
-                should_keep = True
-                if count == 0:
-                    should_keep = False
-                elif not is_in_active: # 不在活跃列表（即超过1个月没说话）
-                    # 如果次数不多(<=4) 且 距离最后一次说话已经超过7天
-                    if count <= 4 and (now - last_active_ts > seven_days):
-                        should_keep = False
-                
-                if should_keep:
-                    new_users[uid] = valid_ts
-            
-            if new_users:
-                new_stats[gid] = new_users
-        
-        self.rbq_stats = new_stats
-        self._save_json(self.rbq_stats_file, self.rbq_stats)
+        self._store.sync_refs(
+            records=self.records,
+            active_users=self.active_users,
+            forced_records=self.forced_records,
+            rbq_stats=self.rbq_stats,
+        )
+        self._store.clean_rbq_stats()
+        self.rbq_stats = self._store.rbq_stats
 
     def _load_json(self, path: str, default: object):
-        if not os.path.exists(path):
-            return default
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return default
+        return self._store.load_json(path, default)
 
     def _save_json(self, path: str, data: object):
         try:
-            # === 全局记录总量清理逻辑 ===
-            if path == self.records_file and "groups" in data:
-                max_total = self.config.get("max_records", 500)
-                all_recs = []
-                # 展平所有记录
-                for gid, gdata in data["groups"].items():
-                    for r in gdata.get("records", []):
-                        r["_gid"] = gid  # 临时记录所属群
-                        all_recs.append(r)
-                
-                # 如果超过全局上限
-                if len(all_recs) > max_total:
-                    # 按时间戳排序（最早的在前面）
-                    all_recs.sort(key=lambda x: x.get("timestamp", ""))
-                    # 只保留最后的 max_total 条
-                    keep_recs = all_recs[-max_total:]
-                    
-                    # 重新归类到各个群
-                    new_groups = {}
-                    for r in keep_recs:
-                        gid = r.pop("_gid")
-                        if gid not in new_groups:
-                            new_groups[gid] = {"records": []}
-                        new_groups[gid]["records"].append(r)
-                    data["groups"] = new_groups
-
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            self._store.sync_refs(
+                records=self.records,
+                active_users=self.active_users,
+                forced_records=self.forced_records,
+                rbq_stats=self.rbq_stats,
+            )
+            self._store.save_json(path, data)
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
 
     @staticmethod
     def _normalize_user_id_set(values: object) -> set[str]:
-        if not isinstance(values, (list, tuple, set)):
-            return set()
-        return {str(v) for v in values if str(v).strip()}
+        return ConfigAccessor.normalize_user_id_set(values)
 
     def _draw_excluded_users(self) -> set[str]:
-        return self._normalize_user_id_set(self.config.get("excluded_users", []))
+        return self._config.draw_excluded_users()
 
     def _force_marry_excluded_users(self) -> set[str]:
-        return self._normalize_user_id_set(
-            self.config.get("force_marry_excluded_users", []),
-        )
+        return self._config.force_marry_excluded_users()
 
     def _is_allowed_group(self, group_id: str) -> bool:
-        whitelist = self.config.get("whitelist_groups", [])
-        blacklist = self.config.get("blacklist_groups", [])
-        group_id = str(group_id)
-
-        if group_id in {str(g) for g in blacklist}:
-            return False
-        if whitelist and group_id not in {str(g) for g in whitelist}:
-            return False
-        return True
+        return self._config.is_allowed_group(str(group_id))
 
     def _ensure_today_records(self) -> None:
-        today = datetime.now().strftime("%Y-%m-%d")
-        if self.records.get("date") != today:
-            self.records = {"date": today, "groups": {}}
+        self._store.sync_refs(records=self.records)
+        self._store.ensure_today_records()
+        self.records = self._store.records
 
     def _get_group_records(self, group_id: str) -> list[dict]:
-        self._ensure_today_records()
-        if group_id not in self.records["groups"]:
-            self.records["groups"][group_id] = {"records": []}
-        return self.records["groups"][group_id]["records"]
+        self._store.sync_refs(records=self.records)
+        records = self._store.get_group_records(str(group_id))
+        self.records = self._store.records
+        return records
 
     def _auto_set_other_half_enabled(self) -> bool:
-        return bool(self.config.get("auto_set_other_half", False))
+        return self._config.auto_set_other_half_enabled()
 
     def _auto_withdraw_enabled(self) -> bool:
-        return bool(self.config.get("auto_withdraw_enabled", False))
+        return self._config.auto_withdraw_enabled()
 
     def _auto_withdraw_delay_seconds(self) -> int:
-        raw = self.config.get("auto_withdraw_delay_seconds", 5)
-        try:
-            delay = int(raw)
-        except Exception:
-            delay = 5
-        return max(1, delay)
+        return self._config.auto_withdraw_delay_seconds()
 
     def _can_onebot_withdraw(self, event: AstrMessageEvent) -> bool:
         return self._auto_withdraw_enabled() and event.get_platform_name() == "aiocqhttp"
 
     async def _send_onebot_message(
-        self, event: AstrMessageEvent, *, message: list[dict]
+        self,
+        event: AstrMessageEvent,
+        *,
+        message: list[dict],
     ) -> object:
         assert isinstance(event, AiocqhttpMessageEvent)
-
-        group_id = event.get_group_id()
-        if group_id:
-            resp = await event.bot.api.call_action(
-                "send_group_msg", group_id=int(group_id), message=message
-            )
-        else:
-            resp = await event.bot.api.call_action(
-                "send_private_msg",
-                user_id=int(event.get_sender_id()),
-                message=message,
-            )
-
-        message_id = extract_message_id(resp)
+        message_id = await self._gateway.send_message(event, message=message)
         if message_id is None:
-            logger.warning(f"无法解析 send_*_msg 返回的 message_id: {resp!r}")
+            logger.warning("无法解析 send_*_msg 返回的 message_id")
         return message_id
 
     def _schedule_onebot_delete_msg(self, client, *, message_id: object) -> None:
-        delay = self._auto_withdraw_delay_seconds()
-
-        async def _runner():
-            await asyncio.sleep(delay)
-            try:
-                await client.api.call_action("delete_msg", message_id=message_id)
-            except Exception as e:
-                logger.warning(f"自动撤回失败: {e}")
-
-        task = asyncio.create_task(_runner())
-        self._withdraw_tasks.add(task)
-        task.add_done_callback(self._withdraw_tasks.discard)
+        self._gateway.schedule_delete_msg(
+            client,
+            message_id=message_id,
+            delay_seconds=self._auto_withdraw_delay_seconds(),
+        )
 
     @staticmethod
     def _resolve_member_name(
-        members: list[dict], *, user_id: str, fallback: str
+        members: list[dict],
+        *,
+        user_id: str,
+        fallback: str,
     ) -> str:
-        for m in members:
-            if str(m.get("user_id")) == str(user_id):
-                return m.get("card") or m.get("nickname") or fallback
-        return fallback
+        return OneBotGateway.resolve_member_name(
+            members,
+            user_id=user_id,
+            fallback=fallback,
+        )
 
     def _record_active(self, event: AstrMessageEvent) -> None:
         group_id = event.get_group_id()
@@ -298,7 +192,7 @@ class RandomWifePlugin(Star):
         self._record_active(event)
 
     def _get_keyword_trigger_mode(self) -> MatchMode:
-        raw = self.config.get("keyword_trigger_mode", MatchMode.EXACT.value)
+        raw = self._config.keyword_trigger_mode()
         try:
             return MatchMode(str(raw))
         except ValueError:
@@ -346,7 +240,7 @@ class RandomWifePlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def keyword_trigger(self, event: AstrMessageEvent):
-        if not self.config.get("keyword_trigger_enabled", False):
+        if not self._config.keyword_trigger_enabled():
             return
 
         group_id = event.get_group_id()
@@ -385,15 +279,9 @@ class RandomWifePlugin(Star):
         event.stop_event()
 
     def _cleanup_inactive(self, group_id: str):
-        if group_id not in self.active_users:
-            return
-        now, limit = time.time(), 30 * 24 * 3600
-        active_group = self.active_users[group_id]
-        # 过滤过时数据和 ID 为 "0" 的数据
-        new_active = {uid: ts for uid, ts in active_group.items() if (now - ts < limit) and uid != "0"}
-        if len(active_group) != len(new_active):
-            self.active_users[group_id] = new_active
-            self._save_json(self.active_file, self.active_users)
+        self._store.sync_refs(active_users=self.active_users)
+        self._store.cleanup_inactive_group(group_id)
+        self.active_users = self._store.active_users
 
     @filter.command("今日老婆", alias={"抽老婆"})
     async def draw_wife(self, event: AstrMessageEvent):
@@ -412,7 +300,7 @@ class RandomWifePlugin(Star):
         user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
         self._cleanup_inactive(group_id)
 
-        daily_limit = self.config.get("daily_limit", 1)
+        daily_limit = self._config.daily_limit()
         group_records = self._get_group_records(group_id)
         user_recs = [r for r in group_records if r["user_id"] == user_id]
         today_count = len(user_recs)
@@ -463,19 +351,10 @@ class RandomWifePlugin(Star):
 
         # --- 增强：获取最新的群成员列表以过滤退群者 ---
         current_member_ids: list[str] = []
-        members = []
+        members: list[dict] = []
         try:
             if event.get_platform_name() == "aiocqhttp":
-                assert isinstance(event, AiocqhttpMessageEvent)
-                members = await event.bot.api.call_action(
-                    "get_group_member_list", group_id=int(group_id)
-                )
-                if (
-                    isinstance(members, dict)
-                    and "data" in members
-                    and isinstance(members["data"], list)
-                ):
-                    members = members["data"]
+                members = await self._gateway.fetch_group_member_list(event)
                 current_member_ids = [str(m.get("user_id")) for m in members]
         except Exception as e:
             logger.error(f"获取群成员列表失败，将使用缓存池: {e}")
@@ -596,7 +475,7 @@ class RandomWifePlugin(Star):
             yield event.plain_result("你今天还没有抽过老婆哦~")
             return
 
-        daily_limit = self.config.get("daily_limit", 3)
+        daily_limit = self._config.daily_limit()
         res = [f"🌸 你今日的老婆记录 ({len(user_recs)}/{daily_limit})："]
         for i, r in enumerate(user_recs, 1):
             time_str = datetime.fromisoformat(r["timestamp"]).strftime("%H:%M")
@@ -628,7 +507,7 @@ class RandomWifePlugin(Star):
         last_dt = datetime.fromtimestamp(last_time)
         
         # 从配置读取 CD 天数
-        cd_days = self.config.get("force_marry_cd", 3)
+        cd_days = self._config.force_marry_cd_days()
 
         # --- 核心逻辑：计算目标重置日期 ---
         # 逻辑是：取上次强娶那一天的 00:00，加上 cd_days 天。
@@ -672,19 +551,10 @@ class RandomWifePlugin(Star):
         # 获取名字
         target_name = f"用户({target_id})"
         user_name = event.get_sender_name() or f"用户({user_id})"
-        members = []
+        members: list[dict] = []
         try:
             if event.get_platform_name() == "aiocqhttp":
-                assert isinstance(event, AiocqhttpMessageEvent)
-                members = await event.bot.api.call_action(
-                    "get_group_member_list", group_id=int(group_id)
-                )
-                if (
-                    isinstance(members, dict)
-                    and "data" in members
-                    and isinstance(members["data"], list)
-                ):
-                    members = members["data"]
+                members = await self._gateway.fetch_group_member_list(event)
 
                 target_name = self._resolve_member_name(
                     members, user_id=target_id, fallback=target_name
@@ -762,20 +632,7 @@ class RandomWifePlugin(Star):
 
     @staticmethod
     def _extract_target_id_from_message(event: AstrMessageEvent) -> str | None:
-        for component in event.message_obj.message:
-            if isinstance(component, Comp.At):
-                return str(component.qq)
-
-        raw_text = str(getattr(event, "message_str", "") or "")
-        cq_at = re.search(r"\[CQ:at,qq=(\d+)\]", raw_text)
-        if cq_at:
-            return cq_at.group(1)
-
-        plain_at = re.search(r"@(\d{5,12})", raw_text)
-        if plain_at:
-            return plain_at.group(1)
-
-        return None
+        return OneBotGateway.extract_target_id_from_message(event)
 
     @filter.command("关系图")
     async def show_graph(self, event: AstrMessageEvent):
@@ -787,7 +644,7 @@ class RandomWifePlugin(Star):
         if not self._is_allowed_group(group_id):
             return
 
-        iter_count = self.config.get("iterations", 150)
+        iter_count = self._config.iterations()
 
         # --- 新增：读取 JS 文件内容 ---
         vis_js_path = os.path.join(self.curr_dir, "vis-network.min.js")
@@ -812,29 +669,17 @@ class RandomWifePlugin(Star):
         group_data = self.records.get("groups", {}).get(group_id, {}).get("records", [])
 
         group_name = "未命名群聊"
-        user_map = {}
+        user_map: dict[str, str] = {}
         try:
             if event.get_platform_name() == "aiocqhttp":
-                # 获取群信息
-                info = await event.bot.api.call_action(
-                    "get_group_info", group_id=int(group_id)
-                )
-                if isinstance(info, dict) and "data" in info and isinstance(info["data"], dict):
-                    info = info["data"]
-                group_name = info.get("group_name", "未命名群聊")
+                info = await self._gateway.fetch_group_info(event)
+                group_name = str(info.get("group_name") or "未命名群聊")
 
-                # 获取群成员列表构建映射
-                members = await event.bot.api.call_action(
-                    "get_group_member_list", group_id=int(group_id)
-                )
-                if isinstance(members, dict) and "data" in members and isinstance(members["data"], list):
-                    members = members["data"]
-
-                if isinstance(members, list):
-                    for m in members:
-                        uid = str(m.get("user_id"))
-                        name = m.get("card") or m.get("nickname") or uid
-                        user_map[uid] = name
+                members = await self._gateway.fetch_group_member_list(event)
+                for member in members:
+                    uid = str(member.get("user_id"))
+                    name = member.get("card") or member.get("nickname") or uid
+                    user_map[uid] = str(name)
 
         except Exception as e:
             logger.warning(f"获取群信息失败: {e}")
@@ -898,13 +743,13 @@ class RandomWifePlugin(Star):
             return
 
         # 获取群成员名字映射 (仿照关系图逻辑)
-        user_map = {}
+        user_map: dict[str, str] = {}
         try:
             if event.get_platform_name() == "aiocqhttp":
-                members = await event.bot.api.call_action('get_group_member_list', group_id=int(group_id))
-                for m in members:
-                    uid = str(m.get("user_id"))
-                    user_map[uid] = m.get("card") or m.get("nickname") or uid
+                members = await self._gateway.fetch_group_member_list(event)
+                for member in members:
+                    uid = str(member.get("user_id"))
+                    user_map[uid] = str(member.get("card") or member.get("nickname") or uid)
         except Exception:
             pass
 
@@ -1007,7 +852,7 @@ class RandomWifePlugin(Star):
     async def _cmd_show_help(self, event: AstrMessageEvent):
         if not self._is_allowed_group(str(event.get_group_id())):
             return
-        daily_limit = self.config.get("daily_limit", 3)
+        daily_limit = self._config.daily_limit()
         help_text = (
             "===== 🌸 抽老婆帮助 =====\n"
             "1. 【抽老婆】：随机抽取今日老婆\n"
@@ -1142,12 +987,13 @@ class RandomWifePlugin(Star):
             yield event.plain_result(f"Render failed: {e}")
 
     async def terminate(self):
-        self._save_json(self.records_file, self.records)
-        self._save_json(self.active_file, self.active_users)
-        self._save_json(self.forced_file, self.forced_records)
-        self._save_json(self.rbq_stats_file, self.rbq_stats)
+        self._store.sync_refs(
+            records=self.records,
+            active_users=self.active_users,
+            forced_records=self.forced_records,
+            rbq_stats=self.rbq_stats,
+        )
+        self._store.save_all()
 
         # 取消尚未执行的撤回任务，避免插件卸载后仍调用协议端。
-        for task in tuple(self._withdraw_tasks):
-            task.cancel()
-        self._withdraw_tasks.clear()
+        self._gateway.cancel_pending_withdraw_tasks()
