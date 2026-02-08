@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import time
 #from datetime import datetime
 from datetime import datetime, timedelta
@@ -13,11 +14,18 @@ from astrbot.api.star import Context, Star
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
+from astrbot.core.star.filter.permission import PermissionTypeFilter
+from astrbot.core.star.star_handler import star_handlers_registry
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 try:
     # 插件目录下的同级模块（推荐）。正常情况下 AstrBot 会将插件目录加入 sys.path。
-    from keyword_trigger import KeywordRoute, KeywordRouter, MatchMode
+    from keyword_trigger import (
+        KeywordRoute,
+        KeywordRouter,
+        MatchMode,
+        PermissionLevel,
+    )
 except ModuleNotFoundError:
     # 兼容性兜底：某些部署方式可能只同步 main.py，或未将插件目录加入 sys.path，
     # 从而导致同级模块无法导入。为避免插件直接载入失败，这里提供最小实现作为 fallback。
@@ -30,10 +38,15 @@ except ModuleNotFoundError:
         STARTS_WITH = "starts_with"
         CONTAINS = "contains"
 
+    class PermissionLevel(str, Enum):
+        MEMBER = "member"
+        ADMIN = "admin"
+
     @dataclass(frozen=True, slots=True)
     class KeywordRoute:
         keyword: str
         action: str
+        permission: PermissionLevel = PermissionLevel.MEMBER
 
     class KeywordRouter:
         def __init__(self, routes: Sequence[KeywordRoute]):
@@ -43,6 +56,12 @@ except ModuleNotFoundError:
             )
 
         def match(self, message: str, *, mode: MatchMode) -> Optional[str]:
+            route = self.match_route(message, mode=mode)
+            if route is None:
+                return None
+            return route.action
+
+        def match_route(self, message: str, *, mode: MatchMode) -> Optional[KeywordRoute]:
             text = message.strip()
             if not text:
                 return None
@@ -53,8 +72,43 @@ except ModuleNotFoundError:
 
             for route in routes:
                 if self._matches(text, route.keyword, mode):
-                    return route.action
+                    return route
             return None
+
+        def match_command(self, message: str) -> Optional[str]:
+            route = self.match_command_route(message)
+            if route is None:
+                return None
+            return route.action
+
+        def match_command_route(self, message: str) -> Optional[KeywordRoute]:
+            text = self._normalize_command_text(message)
+            if not text:
+                return None
+
+            for route in self._routes_by_keyword_len_desc:
+                if text == route.keyword:
+                    return route
+
+                if not text.startswith(route.keyword):
+                    continue
+
+                next_index = len(route.keyword)
+                if next_index >= len(text):
+                    return route
+
+                next_char = text[next_index]
+                if next_char.isspace() or next_char in {"@", "＠", "["}:
+                    return route
+
+            return None
+
+        @staticmethod
+        def _normalize_command_text(message: str) -> str:
+            text = message.strip()
+            while text and text[0] in {"/", "!", "！"}:
+                text = text[1:].lstrip()
+            return text
 
         @staticmethod
         def _matches(text: str, keyword: str, mode: MatchMode) -> bool:
@@ -120,9 +174,20 @@ _DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
     KeywordRoute(keyword="抽取历史", action="show_history"),
     KeywordRoute(keyword="强娶", action="force_marry"),
     KeywordRoute(keyword="关系图", action="show_graph"),
+    KeywordRoute(keyword="羁绊图谱", action="show_graph"),
     KeywordRoute(keyword="rbq排行", action="rbq_ranking"),
     KeywordRoute(keyword="抽老婆帮助", action="show_help"),
     KeywordRoute(keyword="老婆插件帮助", action="show_help"),
+    KeywordRoute(
+        keyword="重置记录",
+        action="reset_records",
+        permission=PermissionLevel.ADMIN,
+    ),
+    KeywordRoute(
+        keyword="重置强娶时间",
+        action="reset_force_cd",
+        permission=PermissionLevel.ADMIN,
+    ),
 )
 
 class RandomWifePlugin(Star):
@@ -157,6 +222,18 @@ class RandomWifePlugin(Star):
             "show_graph": self._cmd_show_graph,
             "rbq_ranking": self.rbq_ranking,
             "show_help": self._cmd_show_help,
+            "reset_records": self._cmd_reset_records,
+            "reset_force_cd": self._cmd_reset_force_cd,
+        }
+        self._keyword_action_to_command_handler = {
+            "draw_wife": "draw_wife",
+            "show_history": "show_history",
+            "force_marry": "force_marry",
+            "show_graph": "show_graph",
+            "rbq_ranking": "rbq_ranking",
+            "show_help": "show_help",
+            "reset_records": "reset_records",
+            "reset_force_cd": "reset_force_cd",
         }
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
@@ -247,6 +324,20 @@ class RandomWifePlugin(Star):
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
+
+    @staticmethod
+    def _normalize_user_id_set(values: object) -> set[str]:
+        if not isinstance(values, (list, tuple, set)):
+            return set()
+        return {str(v) for v in values if str(v).strip()}
+
+    def _draw_excluded_users(self) -> set[str]:
+        return self._normalize_user_id_set(self.config.get("excluded_users", []))
+
+    def _force_marry_excluded_users(self) -> set[str]:
+        return self._normalize_user_id_set(
+            self.config.get("force_marry_excluded_users", []),
+        )
 
     def _is_allowed_group(self, group_id: str) -> bool:
         whitelist = self.config.get("whitelist_groups", [])
@@ -363,6 +454,41 @@ class RandomWifePlugin(Star):
         stripped = message.lstrip()
         return stripped.startswith(self._keyword_trigger_block_prefixes)
 
+    def _find_command_handler_metadata(self, action: str):
+        handler_name = self._keyword_action_to_command_handler.get(action)
+        if not handler_name:
+            return None
+
+        for handler in star_handlers_registry.get_handlers_by_module_name(
+            self.__class__.__module__,
+        ):
+            if handler.handler_name == handler_name:
+                return handler
+        return None
+
+    def _can_trigger_keyword_route(
+        self,
+        event: AstrMessageEvent,
+        route: KeywordRoute,
+    ) -> bool:
+        handler_md = self._find_command_handler_metadata(route.action)
+        if handler_md is None:
+            if route.permission == PermissionLevel.ADMIN and not event.is_admin():
+                return False
+            return True
+
+        if not handler_md.enabled:
+            return False
+
+        for event_filter in handler_md.event_filters:
+            if isinstance(event_filter, PermissionTypeFilter) and not event_filter.filter(
+                event,
+                self.config,
+            ):
+                return False
+
+        return True
+
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def keyword_trigger(self, event: AstrMessageEvent):
         if not self.config.get("keyword_trigger_enabled", False):
@@ -373,21 +499,29 @@ class RandomWifePlugin(Star):
             return
 
         message_str = event.message_str
-        if not message_str or self._should_ignore_keyword_trigger(message_str):
+        if not message_str:
+            return
+
+        if event.is_at_or_wake_command:
             return
 
         mode = self._get_keyword_trigger_mode()
-        action = self._keyword_router.match(message_str, mode=mode)
-        if not action:
+        route = self._keyword_router.match_route(message_str, mode=mode)
+        if route is None:
+            route = self._keyword_router.match_command_route(message_str)
+        if route is None:
+            return
+
+        if not self._can_trigger_keyword_route(event, route):
             return
 
         # 由于 stop_event() 会阻止后续 handler 执行，这里手动记录一次活跃度，
         # 以避免仅通过“关键词指令”互动的群友永远不进入老婆池。
         self._record_active(event)
 
-        handler = self._keyword_handlers.get(action)
+        handler = self._keyword_handlers.get(route.action)
         if handler is None:
-            logger.warning(f"关键词路由命中未知 action={action!r}，已忽略。")
+            logger.warning(f"关键词路由命中未知 action={route.action!r}，已忽略。")
             return
 
         async for result in handler(event):
@@ -492,7 +626,7 @@ class RandomWifePlugin(Star):
             logger.error(f"获取群成员列表失败，将使用缓存池: {e}")
 
         active_pool = self.active_users.get(group_id, {})
-        excluded = {str(uid) for uid in self.config.get("excluded_users", [])}
+        excluded = self._draw_excluded_users()
         excluded.update([bot_id, user_id, "0"])
 
         # 核心逻辑：如果在 aiocqhttp 平台，只从【当前还在群里】的人中抽取
@@ -627,12 +761,12 @@ class RandomWifePlugin(Star):
             return
 
         user_id = str(event.get_sender_id())
+        bot_id = str(event.get_self_id())
         group_id = str(event.get_group_id())
         if not self._is_allowed_group(group_id):
             return
 
         now = time.time()
-        now_dt = datetime.now()
         
         # 获取上次强娶的时间戳和日期
         last_time = self.forced_records.setdefault(group_id, {}).get(user_id, 0)
@@ -664,12 +798,7 @@ class RandomWifePlugin(Star):
             )
             return
 
-        # 获取目标
-        target_id = None
-        for component in event.message_obj.message:
-            if isinstance(component, Comp.At):
-                target_id = str(component.qq)
-                break
+        target_id = self._extract_target_id_from_message(event)
 
         if not target_id or target_id == "all":
             yield event.plain_result("请 @ 一个你想强娶的人。")
@@ -677,6 +806,12 @@ class RandomWifePlugin(Star):
 
         if target_id == user_id:
             yield event.plain_result("不能娶自己！")
+            return
+
+        force_excluded = self._force_marry_excluded_users()
+        force_excluded.update({bot_id, "0"})
+        if target_id in force_excluded:
+            yield event.plain_result("该用户在强娶排除列表中，无法被强娶。")
             return
 
         # 获取名字
@@ -770,6 +905,23 @@ class RandomWifePlugin(Star):
         ]
         yield event.chain_result(chain)
 
+    @staticmethod
+    def _extract_target_id_from_message(event: AstrMessageEvent) -> str | None:
+        for component in event.message_obj.message:
+            if isinstance(component, Comp.At):
+                return str(component.qq)
+
+        raw_text = str(getattr(event, "message_str", "") or "")
+        cq_at = re.search(r"\[CQ:at,qq=(\d+)\]", raw_text)
+        if cq_at:
+            return cq_at.group(1)
+
+        plain_at = re.search(r"@(\d{5,12})", raw_text)
+        if plain_at:
+            return plain_at.group(1)
+
+        return None
+
     @filter.command("关系图")
     async def show_graph(self, event: AstrMessageEvent):
         async for result in self._cmd_show_graph(event):
@@ -857,9 +1009,8 @@ class RandomWifePlugin(Star):
                     "iterations": iter_count,
                 },
                 options={
-                    "type": "jpeg",
-                    "quality": 100,
-                    "device_scale_factor": 2,
+                    "type": "png",
+                    "quality": None,
                     "scale": "device",
                     # 必须传齐这四个参数，且必须是 int 或 float，不能是字符串
                     "clip": {
@@ -899,7 +1050,8 @@ class RandomWifePlugin(Star):
                 for m in members:
                     uid = str(m.get("user_id"))
                     user_map[uid] = m.get("card") or m.get("nickname") or uid
-        except: pass
+        except Exception:
+            pass
 
         # 构造排序数据
         sorted_list = []
@@ -936,6 +1088,7 @@ class RandomWifePlugin(Star):
             header_h = 100 
             item_h = 60 
             footer_h = 50
+            rank_width = 400
 
             dynamic_height = header_h + (len(top_10) * item_h) + footer_h
             # 渲染图片
@@ -945,13 +1098,13 @@ class RandomWifePlugin(Star):
                 "title": "❤️ 群rbq月榜 ❤️"
             }, 
             options={
-                "type": "jpeg",
-                "quality": 100,
+                "type": "png",
+                "quality": None,
                 "full_page": False, # 关闭全页面，配合 clip 使用
                 "clip": {
                     "x": 0,
                     "y": 0,
-                    "width": 400,  # 这里的宽度就是你想要的图片宽度
+                    "width": rank_width,
                     "height": dynamic_height # 裁切的高度
                 },
                 "scale": "device",
@@ -965,6 +1118,10 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录")
     async def reset_records(self, event: AstrMessageEvent):
+        async for result in self._cmd_reset_records(event):
+            yield result
+
+    async def _cmd_reset_records(self, event: AstrMessageEvent):
         self.records = {"date": datetime.now().strftime("%Y-%m-%d"), "groups": {}}
         self._save_json(self.records_file, self.records)
         yield event.plain_result("今日抽取记录已重置！")
@@ -972,16 +1129,16 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间")
     async def reset_force_cd(self, event: AstrMessageEvent):
+        async for result in self._cmd_reset_force_cd(event):
+            yield result
+
+    async def _cmd_reset_force_cd(self, event: AstrMessageEvent):
         group_id = str(event.get_group_id())
-        
-        # 逻辑：删除 forced_records 中当前群的数据
-        if hasattr(self, 'forced_records') and group_id in self.forced_records:
-            # 清空该群所有人的 CD 记录
-            self.forced_records[group_id] = {} 
-            
-            # 保存到 forced_marriage.json
+
+        if hasattr(self, "forced_records") and group_id in self.forced_records:
+            self.forced_records[group_id] = {}
             self._save_json(self.forced_file, self.forced_records)
-            
+
             logger.info(f"[Wife] 已重置群 {group_id} 的强娶冷却时间")
             yield event.plain_result("✅ 本群强娶冷却时间已重置！现在大家可以再次强娶了。")
         else:
@@ -999,7 +1156,7 @@ class RandomWifePlugin(Star):
         help_text = (
             "===== 🌸 抽老婆帮助 =====\n"
             "1. 【抽老婆】：随机抽取今日老婆\n"
-            "2. 【强娶 @某人】：强行更换今日老婆（有冷却期）\n"
+            "2. 【强娶@某人】或【强娶 @某人】：强行更换今日老婆（有冷却期）\n"
             "3. 【我的老婆】：查看今日历史与次数\n"
             "4. 【重置记录】：(管理员) 清空数据（强娶记录不会清除）\n"
             "5. 【关系图】：查看群友老婆的关系\n"
@@ -1120,7 +1277,6 @@ class RandomWifePlugin(Star):
                 "iterations": 1000
             }, options={
                 "viewport": {"width": 1920, "height": view_height},
-                "device_scale_factor": 2,
                 "type": "jpeg",
                 "quality": 100,
                 "device_scale_factor_level": "ultra",

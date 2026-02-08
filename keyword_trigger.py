@@ -13,12 +13,20 @@ class MatchMode(str, Enum):
     CONTAINS = "contains"
 
 
+class PermissionLevel(str, Enum):
+    """Keyword route permission level."""
+
+    MEMBER = "member"
+    ADMIN = "admin"
+
+
 @dataclass(frozen=True, slots=True)
 class KeywordRoute:
     """Maps a keyword to an action identifier."""
 
     keyword: str
     action: str
+    permission: PermissionLevel = PermissionLevel.MEMBER
 
 
 class KeywordRouter:
@@ -35,6 +43,12 @@ class KeywordRouter:
         )
 
     def match(self, message: str, *, mode: MatchMode) -> Optional[str]:
+        route = self.match_route(message, mode=mode)
+        if route is None:
+            return None
+        return route.action
+
+    def match_route(self, message: str, *, mode: MatchMode) -> Optional[KeywordRoute]:
         text = message.strip()
         if not text:
             return None
@@ -45,8 +59,43 @@ class KeywordRouter:
 
         for route in routes:
             if self._matches(text, route.keyword, mode):
-                return route.action
+                return route
         return None
+
+    def match_command(self, message: str) -> Optional[str]:
+        route = self.match_command_route(message)
+        if route is None:
+            return None
+        return route.action
+
+    def match_command_route(self, message: str) -> Optional[KeywordRoute]:
+        text = self._normalize_command_text(message)
+        if not text:
+            return None
+
+        for route in self._routes_by_keyword_len_desc:
+            if text == route.keyword:
+                return route
+
+            if not text.startswith(route.keyword):
+                continue
+
+            next_index = len(route.keyword)
+            if next_index >= len(text):
+                return route
+
+            next_char = text[next_index]
+            if next_char.isspace() or next_char in {"@", "＠", "["}:
+                return route
+
+        return None
+
+    @staticmethod
+    def _normalize_command_text(message: str) -> str:
+        text = message.strip()
+        while text and text[0] in {"/", "!", "！"}:
+            text = text[1:].lstrip()
+        return text
 
     @staticmethod
     def _matches(text: str, keyword: str, mode: MatchMode) -> bool:
@@ -57,4 +106,3 @@ class KeywordRouter:
         if mode == MatchMode.CONTAINS:
             return keyword in text
         raise ValueError(f"Unknown MatchMode: {mode}")
-

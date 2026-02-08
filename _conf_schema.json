@@ -23,6 +23,12 @@
         "hint": "在此列表中的QQ号将不会被抽中。",
         "default": []
     },
+    "force_marry_excluded_users": {
+        "type": "list",
+        "description": "强娶排除用户列表",
+        "hint": "在此列表中的QQ号不会被“强娶”指令选中。",
+        "default": []
+    },
     "whitelist_groups": {
         "type": "list",
         "description": "群聊白名单",

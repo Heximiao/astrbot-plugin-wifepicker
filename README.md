@@ -25,6 +25,8 @@
 | `/抽老婆帮助` | - | 用户 | 查看详细指令说明 |
 
 > 若在插件配置中开启 `keyword_trigger_enabled`，则也可直接发送关键词（如：`抽老婆`、`强娶`、`关系图`、`抽老婆帮助`）触发，无需指令前缀。
+> 关键词触发同样遵循权限控制：例如 `重置记录`、`重置强娶时间` 仍仅管理员可用。
+> 若在 AstrBot 指令管理中把某条指令设为“已禁用”，对应关键词触发也会同步失效。
 
 ## 功能演示
 ![群内关系图](pic/关系图.jpg)
@@ -47,7 +49,8 @@
 | --- | --- | --- | --- |
 | `daily_limit` | int | 1 | 每人每天可抽取的次数上限 |
 | `max_records` | int | 500 | 全局 JSON 存储的最大记录条数 |
-| `excluded_users` | list | [] | 永远不会被抽中的 QQ 号列表 |
+| `excluded_users` | list | [] | 永远不会被抽中的 QQ 号列表（用于“今日老婆”） |
+| `force_marry_excluded_users` | list | [] | 强娶排除用户列表（在此列表中的 QQ 号不能被强娶） |
 | `whitelist_groups` | list | [] | 白名单模式：仅在此列表中的群生效 |
 | `blacklist_groups` | list | [] | 黑名单模式：列表中的群将禁用插件 |
 | `keyword_trigger_enabled` | bool | false | 是否启用“关键词触发”（无需 `/` 前缀） |
