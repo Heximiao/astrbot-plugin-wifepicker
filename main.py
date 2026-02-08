@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import time
 #from datetime import datetime
 from datetime import datetime, timedelta
@@ -55,6 +56,35 @@ except ModuleNotFoundError:
                 if self._matches(text, route.keyword, mode):
                     return route.action
             return None
+
+        def match_command(self, message: str) -> Optional[str]:
+            text = self._normalize_command_text(message)
+            if not text:
+                return None
+
+            for route in self._routes_by_keyword_len_desc:
+                if text == route.keyword:
+                    return route.action
+
+                if not text.startswith(route.keyword):
+                    continue
+
+                next_index = len(route.keyword)
+                if next_index >= len(text):
+                    return route.action
+
+                next_char = text[next_index]
+                if next_char.isspace() or next_char in {"@", "＠", "["}:
+                    return route.action
+
+            return None
+
+        @staticmethod
+        def _normalize_command_text(message: str) -> str:
+            text = message.strip()
+            while text and text[0] in {"/", "!", "！"}:
+                text = text[1:].lstrip()
+            return text
 
         @staticmethod
         def _matches(text: str, keyword: str, mode: MatchMode) -> bool:
@@ -120,6 +150,7 @@ _DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
     KeywordRoute(keyword="抽取历史", action="show_history"),
     KeywordRoute(keyword="强娶", action="force_marry"),
     KeywordRoute(keyword="关系图", action="show_graph"),
+    KeywordRoute(keyword="羁绊图谱", action="show_graph"),
     KeywordRoute(keyword="rbq排行", action="rbq_ranking"),
     KeywordRoute(keyword="抽老婆帮助", action="show_help"),
     KeywordRoute(keyword="老婆插件帮助", action="show_help"),
@@ -373,11 +404,13 @@ class RandomWifePlugin(Star):
             return
 
         message_str = event.message_str
-        if not message_str or self._should_ignore_keyword_trigger(message_str):
+        if not message_str:
             return
 
         mode = self._get_keyword_trigger_mode()
         action = self._keyword_router.match(message_str, mode=mode)
+        if not action:
+            action = self._keyword_router.match_command(message_str)
         if not action:
             return
 
@@ -632,7 +665,6 @@ class RandomWifePlugin(Star):
             return
 
         now = time.time()
-        now_dt = datetime.now()
         
         # 获取上次强娶的时间戳和日期
         last_time = self.forced_records.setdefault(group_id, {}).get(user_id, 0)
@@ -664,12 +696,7 @@ class RandomWifePlugin(Star):
             )
             return
 
-        # 获取目标
-        target_id = None
-        for component in event.message_obj.message:
-            if isinstance(component, Comp.At):
-                target_id = str(component.qq)
-                break
+        target_id = self._extract_target_id_from_message(event)
 
         if not target_id or target_id == "all":
             yield event.plain_result("请 @ 一个你想强娶的人。")
@@ -770,6 +797,23 @@ class RandomWifePlugin(Star):
         ]
         yield event.chain_result(chain)
 
+    @staticmethod
+    def _extract_target_id_from_message(event: AstrMessageEvent) -> str | None:
+        for component in event.message_obj.message:
+            if isinstance(component, Comp.At):
+                return str(component.qq)
+
+        raw_text = str(getattr(event, "message_str", "") or "")
+        cq_at = re.search(r"\[CQ:at,qq=(\d+)\]", raw_text)
+        if cq_at:
+            return cq_at.group(1)
+
+        plain_at = re.search(r"@(\d{5,12})", raw_text)
+        if plain_at:
+            return plain_at.group(1)
+
+        return None
+
     @filter.command("关系图")
     async def show_graph(self, event: AstrMessageEvent):
         async for result in self._cmd_show_graph(event):
@@ -842,8 +886,8 @@ class RandomWifePlugin(Star):
         node_count = len(unique_nodes)
 
         # 假设我们想要从左上角 (0,0) 开始，裁剪一个动态高度的区域
-        clip_width = 1920
-        clip_height = 1080 + (max(0, node_count - 10) * 60)
+        clip_width = 2560
+        clip_height = 1440 + (max(0, node_count - 10) * 80)
 
         try:
             url = await self.html_render(
@@ -859,8 +903,8 @@ class RandomWifePlugin(Star):
                 options={
                     "type": "jpeg",
                     "quality": 100,
-                    "device_scale_factor": 2,
                     "scale": "device",
+                    "viewport_width": clip_width,
                     # 必须传齐这四个参数，且必须是 int 或 float，不能是字符串
                     "clip": {
                         "x": 0,
@@ -899,7 +943,8 @@ class RandomWifePlugin(Star):
                 for m in members:
                     uid = str(m.get("user_id"))
                     user_map[uid] = m.get("card") or m.get("nickname") or uid
-        except: pass
+        except Exception:
+            pass
 
         # 构造排序数据
         sorted_list = []
@@ -936,6 +981,7 @@ class RandomWifePlugin(Star):
             header_h = 100 
             item_h = 60 
             footer_h = 50
+            rank_width = 900
 
             dynamic_height = header_h + (len(top_10) * item_h) + footer_h
             # 渲染图片
@@ -948,10 +994,11 @@ class RandomWifePlugin(Star):
                 "type": "jpeg",
                 "quality": 100,
                 "full_page": False, # 关闭全页面，配合 clip 使用
+                "viewport_width": rank_width,
                 "clip": {
                     "x": 0,
                     "y": 0,
-                    "width": 400,  # 这里的宽度就是你想要的图片宽度
+                    "width": rank_width,
                     "height": dynamic_height # 裁切的高度
                 },
                 "scale": "device",
@@ -999,7 +1046,7 @@ class RandomWifePlugin(Star):
         help_text = (
             "===== 🌸 抽老婆帮助 =====\n"
             "1. 【抽老婆】：随机抽取今日老婆\n"
-            "2. 【强娶 @某人】：强行更换今日老婆（有冷却期）\n"
+            "2. 【强娶@某人】或【强娶 @某人】：强行更换今日老婆（有冷却期）\n"
             "3. 【我的老婆】：查看今日历史与次数\n"
             "4. 【重置记录】：(管理员) 清空数据（强娶记录不会清除）\n"
             "5. 【关系图】：查看群友老婆的关系\n"

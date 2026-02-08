@@ -48,6 +48,35 @@ class KeywordRouter:
                 return route.action
         return None
 
+    def match_command(self, message: str) -> Optional[str]:
+        text = self._normalize_command_text(message)
+        if not text:
+            return None
+
+        for route in self._routes_by_keyword_len_desc:
+            if text == route.keyword:
+                return route.action
+
+            if not text.startswith(route.keyword):
+                continue
+
+            next_index = len(route.keyword)
+            if next_index >= len(text):
+                return route.action
+
+            next_char = text[next_index]
+            if next_char.isspace() or next_char in {"@", "＠", "["}:
+                return route.action
+
+        return None
+
+    @staticmethod
+    def _normalize_command_text(message: str) -> str:
+        text = message.strip()
+        while text and text[0] in {"/", "!", "！"}:
+            text = text[1:].lstrip()
+        return text
+
     @staticmethod
     def _matches(text: str, keyword: str, mode: MatchMode) -> bool:
         if mode == MatchMode.EXACT:
@@ -57,4 +86,3 @@ class KeywordRouter:
         if mode == MatchMode.CONTAINS:
             return keyword in text
         raise ValueError(f"Unknown MatchMode: {mode}")
-
