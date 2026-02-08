@@ -635,7 +635,7 @@ class RandomWifePlugin(Star):
         now_dt = datetime.now()
         
         # 获取上次强娶的时间戳和日期
-        last_time = self.forced_records[group_id].get(user_id, 0)
+        last_time = self.forced_records.setdefault(group_id, {}).get(user_id, 0)
         last_dt = datetime.fromtimestamp(last_time)
         
         # 从配置读取 CD 天数
