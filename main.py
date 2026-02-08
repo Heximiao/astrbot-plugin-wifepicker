@@ -11,13 +11,12 @@ from astrbot.api.star import Context, Star
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
-from astrbot.core.star.filter.permission import PermissionTypeFilter
-from astrbot.core.star.star_handler import star_handlers_registry
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .constants import DEFAULT_KEYWORD_ROUTES
 from .core import ConfigAccessor, DataStore, OneBotGateway
-from .keyword_trigger import KeywordRoute, KeywordRouter, MatchMode, PermissionLevel
+from .keyword_trigger import KeywordRouter, MatchMode
+from .services import ActivityService, KeywordDispatchService
 from .waifu_relations import maybe_add_other_half_record
 
 class RandomWifePlugin(Star):
@@ -73,11 +72,31 @@ class RandomWifePlugin(Star):
             "reset_force_cd": "reset_force_cd",
         }
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
+        self._activity_service = ActivityService(
+            is_allowed_group=self._is_allowed_group,
+            persist_active_users=self._persist_active_users,
+        )
+        self._keyword_dispatch_service = KeywordDispatchService(
+            router=self._keyword_router,
+            handlers=self._keyword_handlers,
+            action_to_command_handler=self._keyword_action_to_command_handler,
+            module_name=self.__class__.__module__,
+            config=self.config,
+            is_allowed_group=self._is_allowed_group,
+            keyword_trigger_enabled=self._config.keyword_trigger_enabled,
+            keyword_trigger_mode=self._get_keyword_trigger_mode,
+            record_active=self._record_active,
+            block_prefixes=self._keyword_trigger_block_prefixes,
+        )
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
 
     @staticmethod
     def _handle_withdraw_error(error: Exception) -> None:
         logger.warning(f"自动撤回失败: {error}")
+
+    def _persist_active_users(self, active_users: dict[str, dict[str, float]]) -> None:
+        self.active_users = active_users
+        self._save_json(self.active_file, self.active_users)
 
     def _clean_rbq_stats(self):
         self._store.sync_refs(
@@ -173,19 +192,7 @@ class RandomWifePlugin(Star):
         )
 
     def _record_active(self, event: AstrMessageEvent) -> None:
-        group_id = event.get_group_id()
-        if not group_id or not self._is_allowed_group(str(group_id)):
-            return
-
-        user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
-        if user_id == bot_id or user_id == "0":
-            return
-
-        group_key = str(group_id)
-        if group_key not in self.active_users:
-            self.active_users[group_key] = {}
-        self.active_users[group_key][user_id] = time.time()
-        self._save_json(self.active_file, self.active_users)
+        self._activity_service.record_active(event, self.active_users)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
@@ -199,89 +206,13 @@ class RandomWifePlugin(Star):
             logger.warning(f"未知 keyword_trigger_mode={raw!r}，将回退为 exact")
             return MatchMode.EXACT
 
-    def _should_ignore_keyword_trigger(self, message: str) -> bool:
-        stripped = message.lstrip()
-        return stripped.startswith(self._keyword_trigger_block_prefixes)
-
-    def _find_command_handler_metadata(self, action: str):
-        handler_name = self._keyword_action_to_command_handler.get(action)
-        if not handler_name:
-            return None
-
-        for handler in star_handlers_registry.get_handlers_by_module_name(
-            self.__class__.__module__,
-        ):
-            if handler.handler_name == handler_name:
-                return handler
-        return None
-
-    def _can_trigger_keyword_route(
-        self,
-        event: AstrMessageEvent,
-        route: KeywordRoute,
-    ) -> bool:
-        handler_md = self._find_command_handler_metadata(route.action)
-        if handler_md is None:
-            if route.permission == PermissionLevel.ADMIN and not event.is_admin():
-                return False
-            return True
-
-        if not handler_md.enabled:
-            return False
-
-        for event_filter in handler_md.event_filters:
-            if isinstance(event_filter, PermissionTypeFilter) and not event_filter.filter(
-                event,
-                self.config,
-            ):
-                return False
-
-        return True
-
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def keyword_trigger(self, event: AstrMessageEvent):
-        if not self._config.keyword_trigger_enabled():
-            return
-
-        group_id = event.get_group_id()
-        if not group_id or not self._is_allowed_group(str(group_id)):
-            return
-
-        message_str = event.message_str
-        if not message_str:
-            return
-
-        if event.is_at_or_wake_command:
-            return
-
-        mode = self._get_keyword_trigger_mode()
-        route = self._keyword_router.match_route(message_str, mode=mode)
-        if route is None:
-            route = self._keyword_router.match_command_route(message_str)
-        if route is None:
-            return
-
-        if not self._can_trigger_keyword_route(event, route):
-            return
-
-        # 由于 stop_event() 会阻止后续 handler 执行，这里手动记录一次活跃度，
-        # 以避免仅通过“关键词指令”互动的群友永远不进入老婆池。
-        self._record_active(event)
-
-        handler = self._keyword_handlers.get(route.action)
-        if handler is None:
-            logger.warning(f"关键词路由命中未知 action={route.action!r}，已忽略。")
-            return
-
-        async for result in handler(event):
+        async for result in self._keyword_dispatch_service.dispatch(event):
             yield result
 
-        event.stop_event()
-
     def _cleanup_inactive(self, group_id: str):
-        self._store.sync_refs(active_users=self.active_users)
-        self._store.cleanup_inactive_group(group_id)
-        self.active_users = self._store.active_users
+        self._activity_service.cleanup_inactive(group_id, self.active_users)
 
     @filter.command("今日老婆", alias={"抽老婆"})
     async def draw_wife(self, event: AstrMessageEvent):
