@@ -14,34 +14,37 @@ def load_json(path: str, default: object):
     except Exception:
         return default
 
-def save_json(path: str, data: object, records_file: str = None, config: object = None):
+def save_json(path: str, data: dict, records_file: str = None, config: object = None):
     try:
-        # === 全局记录总量清理逻辑 ===
-        # 这里的 config 传入的是插件的 self.config 对象
-        if records_file and path == records_file and "groups" in data:
+        # 只要保存的文件是 active_file，就强制执行清理
+        if records_file and path == records_file:
             max_total = config.get("max_records", 500) if config else 500
-            all_recs = []
-            # 展平所有记录
-            for gid, gdata in data["groups"].items():
-                for r in gdata.get("records", []):
-                    r["_gid"] = gid  # 临时记录所属群
-                    all_recs.append(r)
             
-            # 如果超过全局上限
-            if len(all_recs) > max_total:
-                # 按时间戳排序（最早的在前面）
-                all_recs.sort(key=lambda x: x.get("timestamp", ""))
-                # 只保留最后的 max_total 条
-                keep_recs = all_recs[-max_total:]
+            all_actives = []
+            # 针对你图中的结构：直接遍历 data
+            # data 为 {"981496001": {"3253285403": 177056...}}
+            for gid, users in data.items():
+                if isinstance(users, dict):
+                    for uid, ts in users.items():
+                        all_actives.append((gid, uid, ts))
+            
+            # 如果总数超过设定值 (比如你改的 400)
+            if len(all_actives) > max_total:
+                # 按时间戳排序
+                all_actives.sort(key=lambda x: x[2])
+                # 只保留最近的
+                keep_actives = all_actives[-max_total:]
                 
-                # 重新归类到各个群
-                new_groups = {}
-                for r in keep_recs:
-                    gid = r.pop("_gid")
-                    if gid not in new_groups:
-                        new_groups[gid] = {"records": []}
-                    new_groups[gid]["records"].append(r)
-                data["groups"] = new_groups
+                # 重新构建字典
+                new_data = {}
+                for gid, uid, ts in keep_actives:
+                    if gid not in new_data:
+                        new_data[gid] = {}
+                    new_data[gid][uid] = ts
+                
+                # 重要：要把内存里的 data 也更新了，否则下次保存又回来了
+                data.clear()
+                data.update(new_data)
 
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
