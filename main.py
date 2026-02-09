@@ -32,6 +32,24 @@ from .src.utils import (
     resolve_member_name,        # 新增
 )
 
+from .src.debug_utils import run_debug_graph
+# 新增：导入 core helpers
+from .src.core import (
+    send_onebot_message,
+    schedule_onebot_delete_msg,
+    record_active,
+    clean_rbq_stats,
+    draw_excluded_users,
+    force_marry_excluded_users,
+    ensure_today_records,
+    get_group_records,
+    auto_set_other_half_enabled,
+    auto_withdraw_enabled,
+    auto_withdraw_delay_seconds,
+    can_onebot_withdraw,
+    cleanup_inactive,
+)
+
 class RandomWifePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
@@ -80,239 +98,91 @@ class RandomWifePlugin(Star):
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
 
+    def _get_keyword_trigger_mode(self) -> MatchMode:
+        """从配置中获取匹配模式，默认为包含匹配"""
+        # 这里的 config.get 会读取插件配置，建议在控制面板设置里加上这个 key
+        raw = self.config.get("keyword_trigger_mode", "contains")
+        try:
+            return MatchMode(str(raw))
+        except ValueError:
+            return MatchMode.CONTAINS
+
     def _clean_rbq_stats(self):
-        """
-        清理逻辑：
-        1. 移除 30 天前的强娶时间戳记录。
-        2. 若 30 天内次数为 0，直接删掉该用户。
-        3. 如果用户不在 active_users（一个月没说话）：
-           - 若次数 <= 4 且 距离最后一次发言已过 7 天，则删除。
-           - 若次数 > 4，则保留。
-        """
-        now = time.time()
-        thirty_days = 30 * 24 * 3600
-        seven_days = 7 * 24 * 3600
-        
-        new_stats = {}
-        for gid, users in self.rbq_stats.items():
-            new_users = {}
-            # 获取该群的活跃用户映射 {uid: last_ts}
-            active_group = self.active_users.get(gid, {})
-            
-            for uid, timestamps in users.items():
-                # 1. 只保留 30 天内的记录
-                valid_ts = [ts for ts in timestamps if now - ts < thirty_days]
-                count = len(valid_ts)
-                
-                # 2. 检查活跃状态删除规则
-                is_in_active = uid in active_group
-                last_active_ts = active_group.get(uid, 0)
-                
-                should_keep = True
-                if count == 0:
-                    should_keep = False
-                elif not is_in_active: # 不在活跃列表（即超过1个月没说话）
-                    # 如果次数不多(<=4) 且 距离最后一次说话已经超过7天
-                    if count <= 4 and (now - last_active_ts > seven_days):
-                        should_keep = False
-                
-                if should_keep:
-                    new_users[uid] = valid_ts
-            
-            if new_users:
-                new_stats[gid] = new_users
-        
-        self.rbq_stats = new_stats
-        save_json(self.rbq_stats_file, self.rbq_stats)
+        return clean_rbq_stats(self)
 
     def _draw_excluded_users(self) -> set[str]:
-        return normalize_user_id_set(self.config.get("excluded_users", []))
+        return draw_excluded_users(self)
 
     def _force_marry_excluded_users(self) -> set[str]:
-        return normalize_user_id_set(
-            self.config.get("force_marry_excluded_users", []),
-        )
+        return force_marry_excluded_users(self)
 
     def _ensure_today_records(self) -> None:
-        today = datetime.now().strftime("%Y-%m-%d")
-        if self.records.get("date") != today:
-            self.records = {"date": today, "groups": {}}
+        return ensure_today_records(self)
 
     def _get_group_records(self, group_id: str) -> list[dict]:
-        self._ensure_today_records()
-        if group_id not in self.records["groups"]:
-            self.records["groups"][group_id] = {"records": []}
-        return self.records["groups"][group_id]["records"]
+        return get_group_records(self, group_id)
 
     def _auto_set_other_half_enabled(self) -> bool:
-        return bool(self.config.get("auto_set_other_half", False))
+        return auto_set_other_half_enabled(self)
 
     def _auto_withdraw_enabled(self) -> bool:
-        return bool(self.config.get("auto_withdraw_enabled", False))
+        return auto_withdraw_enabled(self)
 
     def _auto_withdraw_delay_seconds(self) -> int:
-        raw = self.config.get("auto_withdraw_delay_seconds", 5)
-        try:
-            delay = int(raw)
-        except Exception:
-            delay = 5
-        return max(1, delay)
+        return auto_withdraw_delay_seconds(self)
 
     def _can_onebot_withdraw(self, event: AstrMessageEvent) -> bool:
-        return self._auto_withdraw_enabled() and event.get_platform_name() == "aiocqhttp"
+        return can_onebot_withdraw(self, event)
 
     async def _send_onebot_message(
         self, event: AstrMessageEvent, *, message: list[dict]
     ) -> object:
-        assert isinstance(event, AiocqhttpMessageEvent)
-
-        group_id = event.get_group_id()
-        if group_id:
-            resp = await event.bot.api.call_action(
-                "send_group_msg", group_id=int(group_id), message=message
-            )
-        else:
-            resp = await event.bot.api.call_action(
-                "send_private_msg",
-                user_id=int(event.get_sender_id()),
-                message=message,
-            )
-
-        message_id = extract_message_id(resp)
-        if message_id is None:
-            logger.warning(f"无法解析 send_*_msg 返回的 message_id: {resp!r}")
-        return message_id
+        return await send_onebot_message(self, event, message=message)
 
     def _schedule_onebot_delete_msg(self, client, *, message_id: object) -> None:
-        delay = self._auto_withdraw_delay_seconds()
-
-        async def _runner():
-            await asyncio.sleep(delay)
-            try:
-                await client.api.call_action("delete_msg", message_id=message_id)
-            except Exception as e:
-                logger.warning(f"自动撤回失败: {e}")
-
-        task = asyncio.create_task(_runner())
-        self._withdraw_tasks.add(task)
-        task.add_done_callback(self._withdraw_tasks.discard)
+        return schedule_onebot_delete_msg(self, client, message_id=message_id)
 
     def _record_active(self, event: AstrMessageEvent) -> None:
-        group_id = event.get_group_id()
-        if not group_id or not is_allowed_group(str(group_id), self.config):
+        return record_active(self, event)
+
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
+    async def keyword_trigger(self, event: AstrMessageEvent):
+        # 1. 检查开关
+        if not self.config.get("keyword_trigger_enabled", False):
             return
+        
+        message_str = event.message_str
+        if not message_str: return
 
-        user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
-        if user_id == bot_id or user_id == "0":
+        # 2. 如果消息本身就带了 / 或 !，说明是正规指令，交给 @filter.command 去处理
+        # 这样可以防止一条指令触发两次
+        if message_str.startswith(self._keyword_trigger_block_prefixes):
             return
-
-        group_key = str(group_id)
-        if group_key not in self.active_users:
-            self.active_users[group_key] = {}
-        self.active_users[group_key][user_id] = time.time()
-        save_json(self.active_file, self.active_users, self.records_file, self.config)
-
+        # 3. 开始匹配关键词（例如：今日老婆）
+        mode = self._get_keyword_trigger_mode()
+        route = self._keyword_router.match_route(message_str, mode=mode)
+        # 兼容模式：如果没有精准匹配，尝试命令式匹配
+        if route is None:
+            route = self._keyword_router.match_command_route(message_str)
+        if route:
+            # 记录活跃（既然说话了就要进池子）
+            self._record_active(event)
+            # 找到对应的函数，比如 _cmd_draw_wife
+            handler = self._keyword_handlers.get(route.action)
+            if handler:
+                # 核心：手动运行你的函数并获取结果
+                async for result in handler(event):
+                    yield result
+                
+                # 处理完了，停止事件，防止再触发别的
+                event.stop_event()
+   
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
         self._record_active(event)
 
-    def _get_keyword_trigger_mode(self) -> MatchMode:
-        raw = self.config.get("keyword_trigger_mode", MatchMode.EXACT.value)
-        try:
-            return MatchMode(str(raw))
-        except ValueError:
-            logger.warning(f"未知 keyword_trigger_mode={raw!r}，将回退为 exact")
-            return MatchMode.EXACT
-
-    def _should_ignore_keyword_trigger(self, message: str) -> bool:
-        stripped = message.lstrip()
-        return stripped.startswith(self._keyword_trigger_block_prefixes)
-
-    def _find_command_handler_metadata(self, action: str):
-        handler_name = self._keyword_action_to_command_handler.get(action)
-        if not handler_name:
-            return None
-
-        for handler in star_handlers_registry.get_handlers_by_module_name(
-            self.__class__.__module__,
-        ):
-            if handler.handler_name == handler_name:
-                return handler
-        return None
-
-    def _can_trigger_keyword_route(
-        self,
-        event: AstrMessageEvent,
-        route: KeywordRoute,
-    ) -> bool:
-        handler_md = self._find_command_handler_metadata(route.action)
-        if handler_md is None:
-            if route.permission == PermissionLevel.ADMIN and not event.is_admin():
-                return False
-            return True
-
-        if not handler_md.enabled:
-            return False
-
-        for event_filter in handler_md.event_filters:
-            if isinstance(event_filter, PermissionTypeFilter) and not event_filter.filter(
-                event,
-                self.config,
-            ):
-                return False
-
-        return True
-
-    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
-    async def keyword_trigger(self, event: AstrMessageEvent):
-        if not self.config.get("keyword_trigger_enabled", False):
-            return
-
-        group_id = event.get_group_id()
-        if not group_id or not is_allowed_group(str(group_id), self.config):
-            return
-
-        message_str = event.message_str
-        if not message_str:
-            return
-
-        if event.is_at_or_wake_command:
-            return
-
-        mode = self._get_keyword_trigger_mode()
-        route = self._keyword_router.match_route(message_str, mode=mode)
-        if route is None:
-            route = self._keyword_router.match_command_route(message_str)
-        if route is None:
-            return
-
-        if not self._can_trigger_keyword_route(event, route):
-            return
-
-        # 由于 stop_event() 会阻止后续 handler 执行，这里手动记录一次活跃度，
-        # 以避免仅通过“关键词指令”互动的群友永远不进入老婆池。
-        self._record_active(event)
-
-        handler = self._keyword_handlers.get(route.action)
-        if handler is None:
-            logger.warning(f"关键词路由命中未知 action={route.action!r}，已忽略。")
-            return
-
-        async for result in handler(event):
-            yield result
-
-        event.stop_event()
-
     def _cleanup_inactive(self, group_id: str):
-        if group_id not in self.active_users:
-            return
-        now, limit = time.time(), 30 * 24 * 3600
-        active_group = self.active_users[group_id]
-        # 过滤过时数据和 ID 为 "0" 的数据
-        new_active = {uid: ts for uid, ts in active_group.items() if (now - ts < limit) and uid != "0"}
-        if len(active_group) != len(new_active):
-            self.active_users[group_id] = new_active
-            save_json(self.active_file, self.active_users)
+        return cleanup_inactive(self, group_id)
 
     @filter.command("今日老婆", alias={"抽老婆"})
     async def draw_wife(self, event: AstrMessageEvent):
@@ -930,118 +800,9 @@ class RandomWifePlugin(Star):
         '''
         调试关系图渲染
         '''
-        # Mock Data
-        mock_records = [
-            {"user_id": "1001", "wife_id": "1002", "wife_name": "User B", "forced": False},
-            {"user_id": "1002", "wife_id": "1003", "wife_name": "User C", "forced": True},
-            {"user_id": "1003", "wife_id": "1001", "wife_name": "User A", "forced": False},
-            {"user_id": "1004", "wife_id": "1005", "wife_name": "User E", "forced": False},
-            {"user_id": "1005", "wife_id": "1004", "wife_name": "User D", "forced": True},
-            {"user_id": "1006", "wife_id": "1007", "wife_name": "User F", "forced": False},
-            {"user_id": "1007", "wife_id": "1006", "wife_name": "User G", "forced": True},
-            {"user_id": "1008", "wife_id": "1006", "wife_name": "User G", "forced": True},
-            {"user_id": "1009", "wife_id": "1006", "wife_name": "User G", "forced": True},
-            {"user_id": "1010", "wife_id": "1006", "wife_name": "User G", "forced": True},
-            {"user_id": "1011", "wife_id": "1006", "wife_name": "User G", "forced": True},
-            {"user_id": "1012", "wife_id": "1011", "wife_name": "User G", "forced": True},
-            {"user_id": "1013", "wife_id": "1012", "wife_name": "User G", "forced": True},
-            {"user_id": "1014", "wife_id": "1013", "wife_name": "User G", "forced": True},
-            {"user_id": "1015", "wife_id": "1014", "wife_name": "User G", "forced": True},
-            {"user_id": "1016", "wife_id": "1015", "wife_name": "User G", "forced": True},
-            {"user_id": "1017", "wife_id": "1016", "wife_name": "User G", "forced": True},
-            {"user_id": "1018", "wife_id": "1009", "wife_name": "User G", "forced": True},
-            {"user_id": "1019", "wife_id": "1006", "wife_name": "User G", "forced": True},
-            {"user_id": "1020", "wife_id": "1010", "wife_name": "User G", "forced": True},
-            {"user_id": "1021", "wife_id": "1011", "wife_name": "User G", "forced": True},
-            {"user_id": "1022", "wife_id": "1012", "wife_name": "User G", "forced": True},
-            {"user_id": "1023", "wife_id": "1013", "wife_name": "User G", "forced": True},
-            {"user_id": "1024", "wife_id": "1014", "wife_name": "User G", "forced": True},
-            {"user_id": "1025", "wife_id": "1015", "wife_name": "User G", "forced": True},
-            {"user_id": "1026", "wife_id": "1016", "wife_name": "User G", "forced": True},
-            {"user_id": "1027", "wife_id": "1010", "wife_name": "User G", "forced": True},
-
-
-        ]
-
-        mock_user_map = {
-            "1001": "Alice (1001)",
-            "1002": "Bob (1002)", 
-            "1003": "Charlie (1003)",
-            "1004": "David (1004)",
-            "1005": "Eve (1005)",
-            "1006": "Frank (1006)",
-            "1007": "Grace (1007)",
-            "1008": "Hank (1008)",
-            "1009": "Ivy (1009)",
-            "1010": "Jack (1010)",
-            "1011": "Jill (1011)",
-            "1012": "John (1012)",
-            "1013": "Julia (1013)",
-            "1014": "Juliet (1014)",
-            "1015": "Justin (1015)",
-            "1016": "Katie (1016)",
-            "1017": "Kevin (1017)",
-            "1018": "Katie (1018)",
-            "1019": "Katie (1019)",
-            "1020": "Katie (1020)",
-            "1021": "Kaie (1021)",
-            "1022": "Katie (1022)",
-            "1023": "Katie (1023)",
-            "1024": "Katie (1024)",
-            "1025": "Katie (1025)",
-            "1026": "Katie (1026)",
-            "1027": "Katie (1027)",
-        }
-
-        # 1. Save HTML for inspection
-        with open(os.path.join(self.curr_dir, "graph_template.html"), "r", encoding="utf-8") as f:
-            template_content = f.read()
-
-        import jinja2
-        env = jinja2.Environment()
-        template = env.from_string(template_content)
-        html_content = template.render(
-            group_name="Debug Group",
-            records=mock_records,
-            user_map=mock_user_map,
-            iterations=1000 # Debug default to strict
-        )
-        
-        debug_html_path = os.path.join(self.curr_dir, "debug_output.html")
-        with open(debug_html_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-        
-        yield event.plain_result(f"Debugging... HTML saved to {debug_html_path}")
-
-        # 2. Render Image using AstrBot internal API
-        # Calculate dynamic height based on node count to prevent overcrowding
-        unique_nodes = set()
-        for r in mock_records:
-            unique_nodes.add(str(r.get("user_id")))
-            unique_nodes.add(str(r.get("wife_id")))
-        node_count = len(unique_nodes)
-        
-        # Base height 1080, add 60px for every node above 10
-        view_height = 1080
-        if node_count > 10:
-            view_height = 1080 + (node_count - 10) * 60
-
-        try:
-            url = await self.html_render(template_content, {
-                "group_name": "Debug Group",
-                "records": mock_records,
-                "user_map": mock_user_map,
-                "iterations": 1000
-            }, options={
-                "viewport": {"width": 1920, "height": view_height},
-                "type": "jpeg",
-                "quality": 100,
-                "device_scale_factor_level": "ultra",
-            })
-            yield event.image_result(url)
-        except Exception as e:
-            logger.error(f"Debug render failed: {e}")
-            yield event.plain_result(f"Render failed: {e}")
+        # 直接调用外部函数，将 self (插件实例) 和 event 传进去
+        async for result in run_debug_graph(self, event):
+            yield result
 
     async def terminate(self):
         save_json(self.records_file, self.records)
