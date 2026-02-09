@@ -68,3 +68,18 @@ def extract_target_id_from_message(event: AstrMessageEvent) -> str | None:
         return plain_at.group(1)
 
     return None
+def is_allowed_group(group_id: str, config: object) -> bool:
+    whitelist = config.get("whitelist_groups", [])
+    blacklist = config.get("blacklist_groups", [])
+    gid_str = str(group_id)
+    if gid_str in {str(g) for g in blacklist}:
+        return False
+    if whitelist and gid_str not in {str(g) for g in whitelist}:
+        return False
+    return True
+
+def resolve_member_name(members: list[dict], user_id: str, fallback: str) -> str:
+    for m in members:
+        if str(m.get("user_id")) == str(user_id):
+            return m.get("card") or m.get("nickname") or fallback
+    return fallback

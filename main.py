@@ -23,7 +23,14 @@ from .onebot_api import extract_message_id
 from .waifu_relations import maybe_add_other_half_record
 
 from .src.constants import _DEFAULT_KEYWORD_ROUTES
-from .src.utils import load_json, save_json, normalize_user_id_set, extract_target_id_from_message
+from .src.utils import (
+    load_json, 
+    save_json, 
+    normalize_user_id_set, 
+    extract_target_id_from_message,
+    is_allowed_group,           # 新增
+    resolve_member_name,        # 新增
+)
 
 class RandomWifePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -118,8 +125,6 @@ class RandomWifePlugin(Star):
         self.rbq_stats = new_stats
         save_json(self.rbq_stats_file, self.rbq_stats)
 
-
-    @staticmethod
     def _draw_excluded_users(self) -> set[str]:
         return normalize_user_id_set(self.config.get("excluded_users", []))
 
@@ -127,17 +132,6 @@ class RandomWifePlugin(Star):
         return normalize_user_id_set(
             self.config.get("force_marry_excluded_users", []),
         )
-
-    def _is_allowed_group(self, group_id: str) -> bool:
-        whitelist = self.config.get("whitelist_groups", [])
-        blacklist = self.config.get("blacklist_groups", [])
-        group_id = str(group_id)
-
-        if group_id in {str(g) for g in blacklist}:
-            return False
-        if whitelist and group_id not in {str(g) for g in whitelist}:
-            return False
-        return True
 
     def _ensure_today_records(self) -> None:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -203,18 +197,9 @@ class RandomWifePlugin(Star):
         self._withdraw_tasks.add(task)
         task.add_done_callback(self._withdraw_tasks.discard)
 
-    @staticmethod
-    def _resolve_member_name(
-        members: list[dict], *, user_id: str, fallback: str
-    ) -> str:
-        for m in members:
-            if str(m.get("user_id")) == str(user_id):
-                return m.get("card") or m.get("nickname") or fallback
-        return fallback
-
     def _record_active(self, event: AstrMessageEvent) -> None:
         group_id = event.get_group_id()
-        if not group_id or not self._is_allowed_group(str(group_id)):
+        if not group_id or not is_allowed_group(str(group_id), self.config):
             return
 
         user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
@@ -225,7 +210,7 @@ class RandomWifePlugin(Star):
         if group_key not in self.active_users:
             self.active_users[group_key] = {}
         self.active_users[group_key][user_id] = time.time()
-        save_json(self.active_file, self.active_users)
+        save_json(self.active_file, self.active_users, self.records_file, self.config)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
@@ -284,7 +269,7 @@ class RandomWifePlugin(Star):
             return
 
         group_id = event.get_group_id()
-        if not group_id or not self._is_allowed_group(str(group_id)):
+        if not group_id or not is_allowed_group(str(group_id), self.config):
             return
 
         message_str = event.message_str
@@ -340,7 +325,7 @@ class RandomWifePlugin(Star):
             return
 
         group_id = str(event.get_group_id())
-        if not self._is_allowed_group(group_id):
+        if not is_allowed_group(group_id, self.config):
             return
 
         user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
@@ -447,10 +432,10 @@ class RandomWifePlugin(Star):
 
         try:
             if event.get_platform_name() == "aiocqhttp":
-                wife_name = self._resolve_member_name(
+                wife_name = resolve_member_name(
                     members, user_id=wife_id, fallback=wife_name
                 )
-                user_name = self._resolve_member_name(
+                user_name = resolve_member_name(
                     members, user_id=user_id, fallback=user_name
                 )
         except Exception:
@@ -515,7 +500,7 @@ class RandomWifePlugin(Star):
 
     async def _cmd_show_history(self, event: AstrMessageEvent):
         group_id = str(event.get_group_id())
-        if not self._is_allowed_group(group_id):
+        if not is_allowed_group(group_id, self.config):
             return
 
         user_id = str(event.get_sender_id())
@@ -552,7 +537,7 @@ class RandomWifePlugin(Star):
         user_id = str(event.get_sender_id())
         bot_id = str(event.get_self_id())
         group_id = str(event.get_group_id())
-        if not self._is_allowed_group(group_id):
+        if not is_allowed_group(group_id, self.config):
             return
 
         now = time.time()
@@ -620,10 +605,10 @@ class RandomWifePlugin(Star):
                 ):
                     members = members["data"]
 
-                target_name = self._resolve_member_name(
+                target_name = resolve_member_name(
                     members, user_id=target_id, fallback=target_name
                 )
-                user_name = self._resolve_member_name(
+                user_name = resolve_member_name(
                     members, user_id=user_id, fallback=user_name
                 )
         except Exception:
@@ -701,7 +686,7 @@ class RandomWifePlugin(Star):
 
     async def _cmd_show_graph(self, event: AstrMessageEvent):
         group_id = str(event.get_group_id())
-        if not self._is_allowed_group(group_id):
+        if not is_allowed_group(group_id, self.config):
             return
 
         iter_count = self.config.get("iterations", 150)
@@ -922,7 +907,7 @@ class RandomWifePlugin(Star):
             yield result
 
     async def _cmd_show_help(self, event: AstrMessageEvent):
-        if not self._is_allowed_group(str(event.get_group_id())):
+        if not is_allowed_group(str(event.get_group_id()), self.config):
             return
         daily_limit = self.config.get("daily_limit", 3)
         help_text = (
