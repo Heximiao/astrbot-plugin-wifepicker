@@ -58,3 +58,28 @@
 | `auto_set_other_half` | bool | false | 自动设置对方老婆（对方当天无记录时才会生效） |
 | `auto_withdraw_enabled` | bool | false | 定时自动撤回（仅 aiocqhttp/OneBot 可用） |
 | `auto_withdraw_delay_seconds` | int | 5 | 自动撤回延迟秒数 |
+
+## 🧩 重构后的模块结构
+
+为了提升扩展性与可维护性，当前版本已将 `main.py` 的大部分业务逻辑拆分到分层模块：
+
+- `main.py`：插件入口、AstrBot 装饰器路由、依赖装配。
+- `constants.py`：默认关键词路由常量。
+- `core/config_accessor.py`：配置读取与类型兜底。
+- `core/data_store.py`：JSON 持久化、记录裁剪、RBQ 统计清理。
+- `core/onebot_gateway.py`：NapCat/OneBot API 适配与响应解包。
+- `services/activity_service.py`：活跃用户记录与清理。
+- `services/keyword_dispatch_service.py`：关键词触发匹配、权限/启用校验。
+- `services/wife_command_service.py`：抽老婆/强娶/关系图/排行等命令业务。
+
+> 指令、配置键与存储数据格式保持兼容，不影响已有部署数据。
+
+## 🔧 开发与验证
+
+建议在本插件目录执行以下命令：
+
+```bash
+python3 -m unittest discover -s tests -p "test_*.py"
+ruff check .
+python3 -m compileall main.py core services
+```
