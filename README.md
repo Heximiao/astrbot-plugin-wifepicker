@@ -26,7 +26,7 @@
 
 > 若在插件配置中开启 `keyword_trigger_enabled`，则也可直接发送关键词（如：`抽老婆`、`强娶`、`关系图`、`抽老婆帮助`）触发，无需指令前缀。
 > 关键词触发同样遵循权限控制：例如 `重置记录`、`重置强娶时间` 仍仅管理员可用。
-> 若在 AstrBot 指令管理中把某条指令设为“已禁用”，对应关键词触发也会同步失效。
+> 若在 AstrBot 指令管理中把某条指令设为“已禁用”，对应关键词触发也会同步失效。<br>
 觉得好用的话，就给个start吧❤️~
 
 ## 功能演示
@@ -59,3 +59,5 @@
 | `auto_set_other_half` | bool | false | 自动设置对方老婆（对方当天无记录时才会生效） |
 | `auto_withdraw_enabled` | bool | false | 定时自动撤回（仅 aiocqhttp/OneBot 可用） |
 | `auto_withdraw_delay_seconds` | int | 5 | 自动撤回延迟秒数 |
+
+觉得好用的话，就给个start吧❤️~
