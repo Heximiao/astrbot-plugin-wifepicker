@@ -570,7 +570,7 @@ class RandomWifePlugin(Star):
         if not is_allowed_group(group_id, self.config):
             return
 
-        iter_count = self.config.get("iterations", 150)
+        iter_count = self.config.get("iterations", 140)
 
         # --- 新增：读取 JS 文件内容 ---
         vis_js_path = os.path.join(self.curr_dir, "vis-network.min.js")
