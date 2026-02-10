@@ -49,6 +49,7 @@
     <div id="network-container"></div>
 
     <script>
+        const hourlyTag = new Date().toISOString().slice(0, 13);
         const raw_data = {{ records | tojson }};
         const user_map = {{ user_map | tojson }} || {};
         const nodes = [];
@@ -66,7 +67,7 @@
                         id: u.id,
                         label: u.name,
                         shape: 'circularImage',
-                        image: `https://q4.qlogo.cn/headimg_dl?dst_uin=${u.id}&spec=640`,
+                       image: `https://q4.qlogo.cn/headimg_dl?dst_uin=${u.id}&spec=640&t=${hourlyTag}`,
                         borderWidth: 6,
                         size: 110, // 放大头像 (50 -> 70)
                         color: { border: '#4facfe', background: '#ffffff' },
@@ -119,8 +120,8 @@
                 stabilization: {
                     enabled: true,
                     iterations: {{ iterations }},
-        updateInterval: 25,
-            onlyDynamicEdges: false,
+                    updateInterval: 25,
+                    onlyDynamicEdges: false,
                 fit: true
                 }
             }
