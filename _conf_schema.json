@@ -11,6 +11,17 @@
         "hint": "一个人每隔多少天可以强娶一次别人。",
         "default": 3
     },
+    "propose_cooldown_minutes": {
+        "type": "int",
+        "description": "求婚冷却分钟数",
+        "hint": "求婚成功后双方进入冷却的时长，单位为分钟。设置为 0 可关闭求婚冷却。",
+        "default": 60,
+        "slider": {
+            "min": 0,
+            "max": 1440,
+            "step": 10
+        }
+    },
     "max_records": {
         "type": "int",
         "description": "活跃群友记录上限",

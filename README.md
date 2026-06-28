@@ -63,6 +63,7 @@
 | --- | --- | --- | --- |
 | `daily_limit` | int | 1 | 每人每天可抽取的次数上限 |
 | `force_marry_cd` | int | 3 | 强娶后的冷却天数 |
+| `propose_cooldown_minutes` | int | 60 | 求婚成功后双方的冷却分钟数，设为 0 可关闭 |
 | `max_records` | int | 500 | 活跃群友的最大记录数 |
 | `active_user_days` | int | 30 | 活跃筛选天数，可设置 1 到 30 天 |
 | `debug_enabled` | bool | false | 开启后输出抽取流程、候选池、群成员过滤、活跃池清理等调试日志 |

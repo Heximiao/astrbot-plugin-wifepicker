@@ -407,7 +407,7 @@ def upsert_user_wife_record(
     records.append(new_record)
 
 
-PROPOSE_COOLDOWN_SECONDS = 3600
+DEFAULT_PROPOSE_COOLDOWN_MINUTES = 60
 
 
 def _get_marriage_action_group(plugin, group_id: str) -> dict:
@@ -454,6 +454,15 @@ def get_propose_cooldown_status(plugin, group_id: str, user_id: str) -> dict | N
     }
 
 
+def get_propose_cooldown_seconds(plugin) -> int:
+    raw = plugin.config.get("propose_cooldown_minutes", DEFAULT_PROPOSE_COOLDOWN_MINUTES)
+    try:
+        minutes = int(float(raw))
+    except Exception:
+        minutes = DEFAULT_PROPOSE_COOLDOWN_MINUTES
+    return max(0, minutes) * 60
+
+
 def set_propose_cooldown(
     plugin,
     group_id: str,
@@ -464,11 +473,16 @@ def set_propose_cooldown(
     now: float | None = None,
 ) -> None:
     start_at = time.time() if now is None else now
+    cooldown_seconds = get_propose_cooldown_seconds(plugin)
+    if cooldown_seconds <= 0:
+        _remove_marriage_action_record(plugin, group_id, user_id)
+        return
+
     group_records = _get_marriage_action_group(plugin, group_id)
     group_records[user_id] = {
         "action": "propose",
         "start_at": start_at,
-        "expire_at": start_at + PROPOSE_COOLDOWN_SECONDS,
+        "expire_at": start_at + cooldown_seconds,
         "related_user_id": related_user_id,
         "role": role,
     }
