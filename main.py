@@ -17,6 +17,7 @@ from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
 from .src.command.help import cmd_show_help
 from .src.command.my_wife import cmd_show_history
+from .src.command.pick_wife import cmd_pick_wife, handle_pick_response
 from .src.command.propose import cmd_propose, handle_propose_response
 from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
@@ -118,6 +119,7 @@ class RandomWifePlugin(Star):
             "reset_records": self._cmd_reset_records,
             "reset_force_cd": self._cmd_reset_force_cd,
             "propose_command": self.propose_command,
+            "pick_wife": self._cmd_pick_wife,
         }
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
@@ -180,6 +182,10 @@ class RandomWifePlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
         record_active(self, event)
+        # 在这里触发挑选回复检查钩子，因为它能捕获所有群内纯文本
+        if not event.is_private_chat():
+            async for result in handle_pick_response(self, event):
+                yield result
         # 在这里触发求婚回复检查钩子，因为它能捕获所有群内纯文本
         if not event.is_private_chat():
             async for result in handle_propose_response(self, event):
@@ -652,6 +658,15 @@ class RandomWifePlugin(Star):
     async def propose_command(self, event: AstrMessageEvent):
         # 调用外部的发起求婚逻辑
         async for result in cmd_propose(self, event):
+            yield result
+
+    @filter.command("挑选老婆", alias={"txlp"})
+    async def pick_wife(self, event: AstrMessageEvent):
+        async for result in self._cmd_pick_wife(event):
+            yield result
+
+    async def _cmd_pick_wife(self, event: AstrMessageEvent):
+        async for result in cmd_pick_wife(self, event):
             yield result
 
     async def terminate(self):

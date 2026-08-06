@@ -131,5 +131,27 @@
         "description": "是否 @ 抽到的老婆",
         "hint": "开启后，抽到老婆或强娶时会额外 @ 对方。默认关闭。",
         "default": false
+    },
+    "pick_candidate_count": {
+        "type": "int",
+        "description": "挑选老婆候选人数",
+        "hint": "执行「挑选老婆」时随机抽取的候选群友数量。最大为 6，超过会自动收敛。",
+        "default": 3,
+        "slider": {
+            "min": 1,
+            "max": 6,
+            "step": 1
+        }
+    },
+    "pick_retry_limit": {
+        "type": "int",
+        "description": "挑选重新抽取次数上限",
+        "hint": "挑选过程中可「重新挑选」的次数上限，达到后需直接选择或放弃。设为 0 表示不限次数。",
+        "default": 2,
+        "slider": {
+            "min": 0,
+            "max": 6,
+            "step": 1
+        }
     }
 }
