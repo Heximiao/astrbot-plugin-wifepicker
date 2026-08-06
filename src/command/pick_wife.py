@@ -46,6 +46,7 @@ class PickRequest:
 
 pick_requests: dict[str, dict[str, PickRequest]] = {}
 
+# 得先看看配置里设置了多少候选人，才能决定抽几个人出来，不够的就只能抽现有的了
 
 def _get_candidate_count(plugin_instance) -> int:
     """读取候选人数配置，自动收敛到 [1, MAX_CANDIDATES]。"""
@@ -56,6 +57,7 @@ def _get_candidate_count(plugin_instance) -> int:
         count = DEFAULT_CANDIDATE_COUNT
     return max(1, min(MAX_CANDIDATES, count))
 
+# 这个防止你一直换一批，怕你太挑
 
 def _get_retry_limit(plugin_instance) -> int:
     """读取重新挑选次数上限配置，0 表示不限次数。"""
@@ -74,6 +76,7 @@ def _can_reselect(plugin_instance, req: PickRequest) -> bool:
         return True
     return req.retry_count < limit
 
+# 这个函数用于清理过期的挑选请求，防止内存泄漏和数据混乱（人话：挑选的时间到了，没选就算了）
 
 def _cleanup_expired_requests(group_id: str) -> None:
     """清理该群内所有已过期的挑选请求。"""
@@ -93,6 +96,7 @@ def _cleanup_expired_requests(group_id: str) -> None:
     if not group_requests:
         pick_requests.pop(group_id, None)
 
+# 这个函数用于删除某个用户在某个群的挑选请求（人话：你挑选的时间到了，没选就算了）
 
 def _delete_request(group_id: str, user_id: str) -> None:
     """删除某用户在该群的挑选请求。"""
@@ -104,6 +108,7 @@ def _delete_request(group_id: str, user_id: str) -> None:
     if not group_requests:
         pick_requests.pop(group_id, None)
 
+# 这个函数用于生成候选列表的文本展示（人话：给你看看有谁可以选，你挑一个）
 
 def _format_candidate_list(req: PickRequest) -> str:
     """生成纯文本候选编号列表（不带头像）。"""
@@ -116,6 +121,7 @@ def _format_candidate_list(req: PickRequest) -> str:
     return "\n".join(lines)
 
 
+# 从活跃池里捞一批人来当候选（人话：先给你物色几个对象看看，有没有顺眼的）
 async def _draw_candidates(
     plugin_instance, event: AstrMessageEvent, user_id: str, count: int
 ) -> list[tuple[str, str]]:
@@ -170,6 +176,7 @@ async def _draw_candidates(
     return result
 
 
+# 这个命令用于触发挑选老婆的逻辑（人话：相亲）
 async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     """「挑选老婆」命令入口：校验后抽取候选并展示编号列表。"""
     if event.is_private_chat():
@@ -211,6 +218,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     yield event.plain_result(_format_candidate_list(req))
 
 
+# 把选中的老婆发出来（人话：官宣，你挑中Ta了）
 async def _send_pick_confirmation(
     plugin_instance, event: AstrMessageEvent, user_id: str, wife_id: str, wife_name: str
 ):
@@ -239,6 +247,7 @@ async def _send_pick_confirmation(
     yield event.chain_result(chain)
 
 
+# 处理挑选期间的回复（人话：等着看你回数字/重新挑选/放弃）
 async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     """处理挑选期间的回复：编号选择、重新挑选、放弃。"""
     if event.is_private_chat():
@@ -253,6 +262,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     if not isinstance(req, PickRequest):
         return
 
+    # 用户觉得这批都不行，重新抽一批（人话：没一个顺眼的，换个组相亲）
     if msg in RESELECT_KEYWORDS:
         if not _can_reselect(plugin_instance, req):
             event.stop_event()
@@ -283,6 +293,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         yield event.plain_result(_format_candidate_list(new_req))
         return
 
+    # 用户放弃挑选，把名额还回去（人话：这婚不结了，下次再说）
     if msg in ABANDON_KEYWORDS:
         _delete_request(group_id, user_id)
         event.stop_event()
@@ -291,6 +302,8 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
 
     if not msg.isdigit():
         return
+
+    # 用户回了个数字，校验一下再选中（人话：看看你选的是几号）
 
     index = int(msg)
     if not (1 <= index <= len(req.candidates)):
