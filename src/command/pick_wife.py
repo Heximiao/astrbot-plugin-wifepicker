@@ -216,7 +216,7 @@ async def _send_pick_confirmation(
 ):
     """发送挑选确认结果（含所选老婆头像）。"""
     avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
-    text = f" 你挑选了【{wife_name}】作为你的今日老婆！❤️\n请好好对待她哦~"
+    text = f" 你挑选了【{wife_name}】作为你的今日老婆！❤️\n请好好对待Ta哦~"
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
             plugin_instance,
