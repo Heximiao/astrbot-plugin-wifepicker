@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.2.6-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.0-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
@@ -36,8 +36,16 @@
 | `/重置求婚时间` | `czqhsj` | - | 管理员 | 清空当前群所有人的求婚冷却 CD |
 | `/抽老婆帮助` | `clpbz` | `老婆插件帮助` | 用户 | 查看详细指令说明 |
 | `/求婚 @用户` | `qh` | - | 用户 | 向群友发起求婚 |
+| `/挑选老婆` | `txlp` | - | 用户 | 从随机抽取的候选群友中选择一位成为今日老婆 |
 
 求婚发起后，对方可在 30 秒内回复 `同意` 接受，或回复 `拒绝` 拒绝。若被拒绝，发起方可按机器人提示继续确认是否转入强娶流程。
+
+### 🎯 挑选老婆
+发送 `/挑选老婆`（或 `txlp`）后，机器人会从活跃群友中随机抽取若干位候选（数量可配置，默认 3，最大 6），并以编号列表展示。你可：
+* 回复数字 **1-x** 选择心仪的群友成为今日老婆（计入每日抽取上限）。
+* 回复 **重新挑选** 换一批候选（次数可配置，默认 2 次）。
+* 回复 **放弃** 取消本次挑选，名额退还。
+* 30 秒内未选择将自动取消。
 
 ### 💡 关键词模式
 若在配置中开启 `keyword_trigger_enabled`，则上述指令（包括英文缩写）均可**直接发送**（不带 `/` 前缀）触发。
@@ -77,6 +85,8 @@
 | `auto_withdraw_delay_seconds` | int | 5 | 自动撤回的延迟秒数 |
 | `allow_marry_bot` | bool | false | 是否允许机器人进入老婆池并被抽取或强娶 |
 | `at_waifu` | bool | false | 抽到老婆或强娶成功时是否额外 @ 对方 |
+| `pick_candidate_count` | int | 3 | 挑选老婆的候选人数，最大 6，超过自动收敛 |
+| `pick_retry_limit` | int | 2 | 挑选过程中「重新挑选」次数上限，0 表示不限 |
 | `whitelist_groups` | list | [] | 白名单群号列表 |
 | `blacklist_groups` | list | [] | 黑名单群号列表 |
 
@@ -105,6 +115,7 @@ astrbot-plugin-wifepicker/
 │   └── command/
 │       ├── help.py            # /抽老婆帮助
 │       ├── my_wife.py         # /我的老婆
+│       ├── pick_wife.py       # /挑选老婆 与 重新挑选/放弃交互流程
 │       ├── propose.py         # /求婚 与同意/拒绝交互流程
 │       ├── rbqrank.py         # /rbq排行
 │       ├── relationdiagram.py # /关系图
