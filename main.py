@@ -245,7 +245,7 @@ class RandomWifePlugin(Star):
                             {
                                 "type": "text",
                                 "data": {
-                                    "text": f" 你今天已经有老婆了哦❤️~\nTa是：【{wife_name}】\n"
+                                    "text": f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"
                                 },
                             },
                             {"type": "image", "data": {"file": wife_avatar}},
@@ -257,7 +257,7 @@ class RandomWifePlugin(Star):
 
                 chain = [
                     Comp.At(qq=user_id),
-                    Comp.Plain(f" 你今天已经有老婆了哦❤️~\nTa是：【{wife_name}】\n"),
+                    Comp.Plain(f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"),
                     Comp.Image.fromURL(wife_avatar),
                 ]
                 yield event.chain_result(chain)
@@ -382,7 +382,7 @@ class RandomWifePlugin(Star):
 
         avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
         suffix_text = (
-            "\n请好好对待Ta哦❤️~ \n"
+            "\n请好好对待她哦❤️~ \n"
             f"剩余抽取次数：{max(0, daily_limit - today_count - 1)}次"
         )
         
@@ -565,7 +565,7 @@ class RandomWifePlugin(Star):
         save_json(self.forced_file, self.forced_records)
 
         avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
-        text = f" 你今天强娶了【{target_name}】哦❤️~\n请对Ta好一点哦~。\n"
+        text = f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"
         if can_onebot_withdraw(self, event):
             message_id = await send_onebot_message(
                 self,
