@@ -67,7 +67,7 @@ def _get_used_retry_count(plugin_instance, group_id: str, user_id: str) -> int:
 
 
 def _consume_retry(plugin_instance, group_id: str, user_id: str) -> int:
-    """Consume one shared retry for reselect, abandon, or timeout."""
+    """记录今天已经展示的一批候选。"""
     limit = _get_retry_limit(plugin_instance)
     if limit <= 0:
         return 0
@@ -107,7 +107,7 @@ def _get_retry_limit(plugin_instance) -> int:
 
 
 def _can_retry(plugin_instance, group_id: str, user_id: str) -> bool:
-    """判断用户今天是否还有重新挑选或放弃额度。"""
+    """判断用户今天是否还能获取一批候选。"""
     limit = _get_retry_limit(plugin_instance)
     if limit <= 0:
         return True
@@ -115,7 +115,7 @@ def _can_retry(plugin_instance, group_id: str, user_id: str) -> bool:
 
 # 这个函数用于清理过期的挑选请求，防止内存泄漏和数据混乱（人话：挑选的时间到了，没选就算了）
 
-def _cleanup_expired_requests(plugin_instance, group_id: str) -> None:
+def _cleanup_expired_requests(group_id: str) -> None:
     """清理该群内所有已过期的挑选请求。"""
     group_requests = pick_requests.get(group_id)
     if not isinstance(group_requests, dict):
@@ -126,8 +126,6 @@ def _cleanup_expired_requests(plugin_instance, group_id: str) -> None:
     for user_id, req in group_requests.items():
         if not isinstance(req, PickRequest) or req.expire_at <= now:
             expired_user_ids.append(user_id)
-            if isinstance(req, PickRequest):
-                _consume_retry(plugin_instance, group_id, user_id)
     for user_id in expired_user_ids:
         group_requests.pop(user_id, None)
 
@@ -233,7 +231,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         yield event.plain_result("你今天已经抽过/挑选过老婆了，明天再来吧！")
         return
 
-    _cleanup_expired_requests(plugin_instance, group_id)
+    _cleanup_expired_requests(group_id)
     if isinstance(pick_requests.get(group_id, {}).get(user_id), PickRequest):
         yield event.plain_result("你已经在挑选中了，请回复编号、重新挑选或放弃。")
         return
@@ -242,7 +240,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
     if retry_limit > 0 and used_retry_count >= retry_limit:
         yield event.plain_result(
-            f"你今天的挑选重试次数已用完（{retry_limit}次），可以使用「今日老婆」随机抽取。"
+            f"你今天的候选批次已用完（{retry_limit}批），可以使用「今日老婆」随机抽取。"
         )
         return
 
@@ -254,6 +252,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         )
         return
 
+    used_retry_count = _consume_retry(plugin_instance, group_id, user_id)
     now = time.time()
     req = PickRequest(
         group_id=group_id,
@@ -308,7 +307,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     user_id = str(event.get_sender_id())
     msg = event.message_str.strip()
 
-    _cleanup_expired_requests(plugin_instance, group_id)
+    _cleanup_expired_requests(group_id)
     req = pick_requests.get(group_id, {}).get(user_id)
     if not isinstance(req, PickRequest):
         return
@@ -318,7 +317,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         if not _can_retry(plugin_instance, group_id, user_id):
             event.stop_event()
             yield event.plain_result(
-                f"已达到挑选重试次数上限（{_get_retry_limit(plugin_instance)}次），请直接回复编号选择。"
+                f"已达到候选批次上限（{_get_retry_limit(plugin_instance)}批），请从当前候选中选择或放弃。"
             )
             return
 
@@ -347,13 +346,13 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
 
     # 用户放弃挑选，把名额还回去（人话：这婚不结了，下次再说）
     if msg in ABANDON_KEYWORDS:
-        used_retry_count = _consume_retry(plugin_instance, group_id, user_id)
+        used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
         _delete_request(group_id, user_id)
         event.stop_event()
         retry_limit = _get_retry_limit(plugin_instance)
         if retry_limit > 0 and used_retry_count >= retry_limit:
             yield event.plain_result(
-                "已放弃本次挑选，今天的挑选重试次数已用完；仍可使用「今日老婆」随机抽取。"
+                "已放弃本次挑选，今天的候选批次已用完；仍可使用「今日老婆」随机抽取。"
             )
         else:
             remaining_text = (
@@ -362,7 +361,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
                 else str(max(0, retry_limit - used_retry_count))
             )
             yield event.plain_result(
-                f"已放弃本次挑选，本次不占每日抽取名额；剩余挑选重试次数：{remaining_text}。"
+                f"已放弃本次挑选，本次不占每日抽取名额；剩余候选批次：{remaining_text}。"
             )
         return
 
