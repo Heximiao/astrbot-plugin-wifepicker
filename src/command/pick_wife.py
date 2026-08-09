@@ -46,6 +46,43 @@ class PickRequest:
 
 pick_requests: dict[str, dict[str, PickRequest]] = {}
 
+
+def _get_retry_counts(plugin_instance, group_id: str) -> dict[str, int]:
+    """Return today's persisted pick retry counts for a group."""
+    get_group_records(plugin_instance, group_id)
+    group_data = plugin_instance.records["groups"][group_id]
+    counts = group_data.get("pick_retry_counts")
+    if not isinstance(counts, dict):
+        counts = {}
+        group_data["pick_retry_counts"] = counts
+    return counts
+
+
+def _get_used_retry_count(plugin_instance, group_id: str, user_id: str) -> int:
+    raw = _get_retry_counts(plugin_instance, group_id).get(user_id, 0)
+    try:
+        return max(0, int(raw))
+    except Exception:
+        return 0
+
+
+def _consume_retry(plugin_instance, group_id: str, user_id: str) -> int:
+    """Consume one shared retry for reselect, abandon, or timeout."""
+    limit = _get_retry_limit(plugin_instance)
+    if limit <= 0:
+        return 0
+
+    counts = _get_retry_counts(plugin_instance, group_id)
+    used = min(limit, _get_used_retry_count(plugin_instance, group_id, user_id) + 1)
+    counts[user_id] = used
+    save_json(
+        plugin_instance.records_file,
+        plugin_instance.records,
+        plugin_instance.records_file,
+        plugin_instance.config,
+    )
+    return used
+
 # 得先看看配置里设置了多少候选人，才能决定抽几个人出来，不够的就只能抽现有的了
 
 def _get_candidate_count(plugin_instance) -> int:
@@ -69,27 +106,28 @@ def _get_retry_limit(plugin_instance) -> int:
     return max(0, limit)
 
 
-def _can_reselect(plugin_instance, req: PickRequest) -> bool:
-    """判断请求是否还能重新挑选。"""
+def _can_retry(plugin_instance, group_id: str, user_id: str) -> bool:
+    """判断用户今天是否还有重新挑选或放弃额度。"""
     limit = _get_retry_limit(plugin_instance)
     if limit <= 0:
         return True
-    return req.retry_count < limit
+    return _get_used_retry_count(plugin_instance, group_id, user_id) < limit
 
 # 这个函数用于清理过期的挑选请求，防止内存泄漏和数据混乱（人话：挑选的时间到了，没选就算了）
 
-def _cleanup_expired_requests(group_id: str) -> None:
+def _cleanup_expired_requests(plugin_instance, group_id: str) -> None:
     """清理该群内所有已过期的挑选请求。"""
     group_requests = pick_requests.get(group_id)
     if not isinstance(group_requests, dict):
         return
 
     now = time.time()
-    expired_user_ids = [
-        user_id
-        for user_id, req in group_requests.items()
-        if not isinstance(req, PickRequest) or req.expire_at <= now
-    ]
+    expired_user_ids = []
+    for user_id, req in group_requests.items():
+        if not isinstance(req, PickRequest) or req.expire_at <= now:
+            expired_user_ids.append(user_id)
+            if isinstance(req, PickRequest):
+                _consume_retry(plugin_instance, group_id, user_id)
     for user_id in expired_user_ids:
         group_requests.pop(user_id, None)
 
@@ -195,6 +233,19 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         yield event.plain_result("你今天已经抽过/挑选过老婆了，明天再来吧！")
         return
 
+    _cleanup_expired_requests(plugin_instance, group_id)
+    if isinstance(pick_requests.get(group_id, {}).get(user_id), PickRequest):
+        yield event.plain_result("你已经在挑选中了，请回复编号、重新挑选或放弃。")
+        return
+
+    retry_limit = _get_retry_limit(plugin_instance)
+    used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
+    if retry_limit > 0 and used_retry_count >= retry_limit:
+        yield event.plain_result(
+            f"你今天的挑选重试次数已用完（{retry_limit}次），可以使用「今日老婆」随机抽取。"
+        )
+        return
+
     count = _get_candidate_count(plugin_instance)
     candidates = await _draw_candidates(plugin_instance, event, user_id, count)
     if not candidates:
@@ -211,7 +262,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         candidate_names=[name for _, name in candidates],
         created_at=now,
         expire_at=now + PICK_RESPONSE_SECONDS,
-        retry_count=0,
+        retry_count=used_retry_count,
     )
     pick_requests.setdefault(group_id, {})[user_id] = req
 
@@ -257,17 +308,17 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     user_id = str(event.get_sender_id())
     msg = event.message_str.strip()
 
-    _cleanup_expired_requests(group_id)
+    _cleanup_expired_requests(plugin_instance, group_id)
     req = pick_requests.get(group_id, {}).get(user_id)
     if not isinstance(req, PickRequest):
         return
 
     # 用户觉得这批都不行，重新抽一批（人话：没一个顺眼的，换个组相亲）
     if msg in RESELECT_KEYWORDS:
-        if not _can_reselect(plugin_instance, req):
+        if not _can_retry(plugin_instance, group_id, user_id):
             event.stop_event()
             yield event.plain_result(
-                f"已达到重新挑选次数上限（{_get_retry_limit(plugin_instance)}次），请直接回复编号选择。"
+                f"已达到挑选重试次数上限（{_get_retry_limit(plugin_instance)}次），请直接回复编号选择。"
             )
             return
 
@@ -279,6 +330,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
             yield event.plain_result("老婆池为空，请稍后再试。")
             return
 
+        used_retry_count = _consume_retry(plugin_instance, group_id, user_id)
         new_req = PickRequest(
             group_id=req.group_id,
             user_id=req.user_id,
@@ -286,7 +338,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
             candidate_names=[name for _, name in candidates],
             created_at=time.time(),
             expire_at=time.time() + PICK_RESPONSE_SECONDS,
-            retry_count=req.retry_count + 1,
+            retry_count=used_retry_count,
         )
         pick_requests[group_id][user_id] = new_req
         event.stop_event()
@@ -295,9 +347,23 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
 
     # 用户放弃挑选，把名额还回去（人话：这婚不结了，下次再说）
     if msg in ABANDON_KEYWORDS:
+        used_retry_count = _consume_retry(plugin_instance, group_id, user_id)
         _delete_request(group_id, user_id)
         event.stop_event()
-        yield event.plain_result("已放弃本次挑选，名额已退还，随时可以再来~")
+        retry_limit = _get_retry_limit(plugin_instance)
+        if retry_limit > 0 and used_retry_count >= retry_limit:
+            yield event.plain_result(
+                "已放弃本次挑选，今天的挑选重试次数已用完；仍可使用「今日老婆」随机抽取。"
+            )
+        else:
+            remaining_text = (
+                "不限"
+                if retry_limit <= 0
+                else str(max(0, retry_limit - used_retry_count))
+            )
+            yield event.plain_result(
+                f"已放弃本次挑选，本次不占每日抽取名额；剩余挑选重试次数：{remaining_text}。"
+            )
         return
 
     if not msg.isdigit():
