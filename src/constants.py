@@ -9,6 +9,9 @@ _DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
     KeywordRoute(keyword="我的老婆", action="show_history"),
     KeywordRoute(keyword="wdlp", action="show_history"),
     KeywordRoute(keyword="抽取历史", action="show_history"),
+
+    KeywordRoute(keyword="分手", action="breakup"),
+    KeywordRoute(keyword="fs", action="breakup"),
     
     KeywordRoute(keyword="强娶", action="force_marry"),
     KeywordRoute(keyword="qiangqu", action="force_marry"),

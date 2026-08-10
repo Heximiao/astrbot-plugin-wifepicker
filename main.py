@@ -16,6 +16,7 @@ from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
 from .src.command.help import cmd_show_help
+from .src.command.breakup import cmd_breakup
 from .src.command.my_wife import cmd_show_history
 from .src.command.pick_wife import cmd_pick_wife, handle_pick_response
 from .src.command.propose import cmd_propose, handle_propose_response
@@ -96,6 +97,7 @@ class RandomWifePlugin(Star):
             self.data_dir, "qq_official_profiles.json"
         )
         self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
+        self.breakup_file = os.path.join(self.data_dir, "breakup_cooldowns.json")
         self.marriage_action_file = os.path.join(self.data_dir, "marriage_action_today.json")
         self.rbq_stats_file = os.path.join(self.data_dir, "rbq_stats.json")
         
@@ -106,6 +108,7 @@ class RandomWifePlugin(Star):
         self.active_users = load_json(self.active_file, {})
         self.official_profiles = load_json(self.official_profiles_file, {})
         self.forced_records = load_json(self.forced_file, {})
+        self.breakup_records = load_json(self.breakup_file, {})
         self.marriage_action_records = load_json(self.marriage_action_file, {})
         self.rbq_stats = load_json(self.rbq_stats_file, {})
         self._active_user_count = count_active_users(self.active_users)
@@ -129,6 +132,7 @@ class RandomWifePlugin(Star):
             "reset_force_cd": self._cmd_reset_force_cd,
             "propose_command": self.propose_command,
             "pick_wife": self._cmd_pick_wife,
+            "breakup": self._cmd_breakup,
         }
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
         logger.info(f"抽老婆插件已加载。数据目录: {self.data_dir}")
@@ -444,6 +448,15 @@ class RandomWifePlugin(Star):
         async for result in cmd_show_history(self, event):
             yield result
 
+    @filter.command("分手", alias={"fs"})
+    async def breakup(self, event: AstrMessageEvent):
+        async for result in self._cmd_breakup(event):
+            yield result
+
+    async def _cmd_breakup(self, event: AstrMessageEvent):
+        async for result in cmd_breakup(self, event):
+            yield result
+
     @filter.command("强娶", alias={"qiangqu"})
     async def force_marry(self, event: AstrMessageEvent):
         """强娶 + @要娶的那个人"""
@@ -623,8 +636,10 @@ class RandomWifePlugin(Star):
 
     async def _cmd_reset_records(self, event: AstrMessageEvent):
         self.records = {"date": datetime.now().strftime("%Y-%m-%d"), "groups": {}}
+        self.breakup_records = {}
         save_json(self.records_file, self.records)
-        yield event.plain_result("今日抽取记录已重置！")
+        save_json(self.breakup_file, self.breakup_records)
+        yield event.plain_result("今日抽取记录和分手冷却时间已重置！")
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间", alias={"czqqsj"})
@@ -688,6 +703,7 @@ class RandomWifePlugin(Star):
         save_json(self.records_file, self.records)
         save_active_users(self, force_trim=True, force=True)
         save_json(self.forced_file, self.forced_records)
+        save_json(self.breakup_file, self.breakup_records)
         save_json(self.marriage_action_file, self.marriage_action_records)
         save_json(self.rbq_stats_file, self.rbq_stats)
 
