@@ -52,6 +52,7 @@
         const hourlyTag = new Date().toISOString().slice(0, 13);
         const raw_data = {{ records | tojson }};
         const user_map = {{ user_map | tojson }} || {};
+        const avatar_map = {{ avatar_map | tojson }} || {};
         const nodes = [];
         const edges = [];
         const userSet = new Set();
@@ -67,7 +68,7 @@
                         id: u.id,
                         label: u.name,
                         shape: 'circularImage',
-                       image: `https://q4.qlogo.cn/headimg_dl?dst_uin=${u.id}&spec=640&t=${hourlyTag}`,
+                        image: avatar_map[u.id] || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="50" fill="%23ddd"/%3E%3C/svg%3E',
                         borderWidth: 6,
                         size: 110, // 放大头像 (50 -> 70)
                         color: { border: '#4facfe', background: '#ffffff' },

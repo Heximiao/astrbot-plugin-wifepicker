@@ -22,6 +22,11 @@ from .src.command.propose import cmd_propose, handle_propose_response
 from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
 from .src.command.reset_propose_cd import cmd_reset_propose_cd
+from .src.user_profiles import (
+    get_avatar_url,
+    get_display_name,
+    remember_official_profile,
+)
 
 from .src.constants import _DEFAULT_KEYWORD_ROUTES
 from .src.utils import (
@@ -87,6 +92,9 @@ class RandomWifePlugin(Star):
         self.data_dir = os.path.join(get_astrbot_plugin_data_path(), "random_wife")
         self.records_file = os.path.join(self.data_dir, "wife_records.json")
         self.active_file = os.path.join(self.data_dir, "active_users.json") 
+        self.official_profiles_file = os.path.join(
+            self.data_dir, "qq_official_profiles.json"
+        )
         self.forced_file = os.path.join(self.data_dir, "forced_marriage.json")
         self.marriage_action_file = os.path.join(self.data_dir, "marriage_action_today.json")
         self.rbq_stats_file = os.path.join(self.data_dir, "rbq_stats.json")
@@ -96,6 +104,7 @@ class RandomWifePlugin(Star):
             
         self.records = load_json(self.records_file, {"date": "", "groups": {}})
         self.active_users = load_json(self.active_file, {})
+        self.official_profiles = load_json(self.official_profiles_file, {})
         self.forced_records = load_json(self.forced_file, {})
         self.marriage_action_records = load_json(self.marriage_action_file, {})
         self.rbq_stats = load_json(self.rbq_stats_file, {})
@@ -181,6 +190,7 @@ class RandomWifePlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
+        remember_official_profile(self, event)
         record_active(self, event)
         # 在这里触发挑选回复检查钩子，因为它能捕获所有群内纯文本
         if not event.is_private_chat():
@@ -233,9 +243,8 @@ class RandomWifePlugin(Star):
             if daily_limit == 1:
                 wife_record = user_recs[0]
                 wife_name, wife_id = wife_record["wife_name"], wife_record["wife_id"]
-                wife_avatar = (
-                    f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
-                )
+                wife_name = get_display_name(self, event, wife_id, fallback=wife_name)
+                wife_avatar = get_avatar_url(self, event, wife_id)
                 if can_onebot_withdraw(self, event):
                     message_id = await send_onebot_message(
                         self,
@@ -258,8 +267,9 @@ class RandomWifePlugin(Star):
                 chain = [
                     Comp.At(qq=user_id),
                     Comp.Plain(f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"),
-                    Comp.Image.fromURL(wife_avatar),
                 ]
+                if wife_avatar:
+                    chain.append(Comp.Image.fromURL(wife_avatar))
                 yield event.chain_result(chain)
             else:
                 text = f"你今天已经抽了{today_count}次老婆了，明天再来吧！"
@@ -343,8 +353,10 @@ class RandomWifePlugin(Star):
             return
 
         wife_id = random.choice(pool)
-        wife_name = f"用户({wife_id})"
-        user_name = event.get_sender_name() or f"用户({user_id})"
+        wife_name = get_display_name(self, event, wife_id)
+        user_name = get_display_name(
+            self, event, user_id, fallback=event.get_sender_name() or f"用户({user_id})"
+        )
 
         try:
             if event.get_platform_name() == "aiocqhttp":
@@ -380,7 +392,7 @@ class RandomWifePlugin(Star):
 
         save_json(self.records_file, self.records, self.records_file, self.config)
 
-        avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
+        avatar_url = get_avatar_url(self, event, wife_id)
         suffix_text = (
             "\n请好好对待她哦❤️~ \n"
             f"剩余抽取次数：{max(0, daily_limit - today_count - 1)}次"
@@ -418,10 +430,9 @@ class RandomWifePlugin(Star):
         if at_waifu_enabled:
             chain.append(Comp.At(qq=wife_id))
         
-        chain.extend([
-            Comp.Image.fromURL(avatar_url),
-            Comp.Plain(suffix_text),
-        ])
+        if avatar_url:
+            chain.append(Comp.Image.fromURL(avatar_url))
+        chain.append(Comp.Plain(suffix_text))
         yield event.chain_result(chain)
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp"})
@@ -501,8 +512,10 @@ class RandomWifePlugin(Star):
             return
 
         # 获取名字
-        target_name = f"用户({target_id})"
-        user_name = event.get_sender_name() or f"用户({user_id})"
+        target_name = get_display_name(self, event, target_id)
+        user_name = get_display_name(
+            self, event, user_id, fallback=event.get_sender_name() or f"用户({user_id})"
+        )
         members = []
         try:
             if event.get_platform_name() == "aiocqhttp":
@@ -564,7 +577,7 @@ class RandomWifePlugin(Star):
         save_json(self.records_file, self.records)
         save_json(self.forced_file, self.forced_records)
 
-        avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={target_id}&spec=640"
+        avatar_url = get_avatar_url(self, event, target_id)
         text = f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"
         if can_onebot_withdraw(self, event):
             message_id = await send_onebot_message(
@@ -583,8 +596,9 @@ class RandomWifePlugin(Star):
         chain = [
             Comp.At(qq=user_id),
             Comp.Plain(text),
-            Comp.Image.fromURL(avatar_url),
         ]
+        if avatar_url:
+            chain.append(Comp.Image.fromURL(avatar_url))
         yield event.chain_result(chain)
 
     @filter.command("关系图", alias={"gxt"})

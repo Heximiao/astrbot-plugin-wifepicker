@@ -4,6 +4,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from ..core import clean_rbq_stats
+from ..user_profiles import get_avatar_url, get_display_name
 
 
 async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
@@ -36,7 +37,10 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
         sorted_list.append(
             {
                 "uid": uid,
-                "name": user_map.get(uid, f"用户({uid})"),
+                "name": user_map.get(
+                    uid, get_display_name(plugin_instance, event, uid)
+                ),
+                "avatar_url": get_avatar_url(plugin_instance, event, uid),
                 "count": len(ts_list),
             }
         )

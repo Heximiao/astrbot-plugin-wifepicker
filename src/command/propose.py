@@ -16,6 +16,7 @@ from ..core import (
     upsert_user_wife_record,
 )
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
+from ..user_profiles import get_display_name
 
 # 群内待处理的求婚请求
 propose_requests = {}
@@ -183,7 +184,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
         return
 
     now = time.time()
-    target_name = f"用户({target_id})"
+    target_name = get_display_name(plugin_instance, event, target_id)
     try:
         if event.get_platform_name() == "aiocqhttp" and isinstance(
             event, AiocqhttpMessageEvent
@@ -209,7 +210,12 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
 
     propose_requests[group_id][target_id] = {
         "proposer_id": user_id,
-        "proposer_name": event.get_sender_name() or f"用户({user_id})",
+        "proposer_name": get_display_name(
+            plugin_instance,
+            event,
+            user_id,
+            fallback=event.get_sender_name() or f"用户({user_id})",
+        ),
         "target_name": target_name,
         "expire": now + PROPOSE_RESPONSE_SECONDS,
         "umo": event.unified_msg_origin,

@@ -5,6 +5,7 @@ from astrbot.api.event import AstrMessageEvent
 
 from ..core import get_group_records
 from ..utils import is_allowed_group
+from ..user_profiles import get_avatar_url, get_display_name
 
 
 async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
@@ -40,6 +41,7 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
 
     group_name = "未命名群聊"
     user_map = {}
+    avatar_map = {}
     try:
         if event.get_platform_name() == "aiocqhttp":
             # 获取群信息
@@ -81,6 +83,11 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
     for r in group_data:
         unique_nodes.add(str(r.get("user_id")))
         unique_nodes.add(str(r.get("wife_id")))
+    for uid in unique_nodes:
+        user_map.setdefault(uid, get_display_name(plugin_instance, event, uid))
+        avatar_url = get_avatar_url(plugin_instance, event, uid)
+        if avatar_url:
+            avatar_map[uid] = avatar_url
     node_count = len(unique_nodes)
 
     # 假设我们想要从左上角 (0,0) 开始，裁剪一个动态高度的区域
@@ -95,6 +102,7 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
                 "group_id": group_id,
                 "group_name": group_name,
                 "user_map": user_map,
+                "avatar_map": avatar_map,
                 "records": group_data,
                 "iterations": iter_count,
             },

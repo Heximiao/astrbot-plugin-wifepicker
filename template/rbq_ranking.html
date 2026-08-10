@@ -41,7 +41,7 @@
         {% for user in ranking %}
         <div class="item">
             <div class="rank">#{{ user.rank }}</div>
-            <img class="avatar" src="https://q4.qlogo.cn/headimg_dl?dst_uin={{ user.uid }}&spec=100&t={{ range(1, 99999) | random }}">
+            <img class="avatar" src="{{ user.avatar_url or 'data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%20100%20100%27%3E%3Ccircle%20cx=%2750%27%20cy=%2750%27%20r=%2750%27%20fill=%27%23ddd%27/%3E%3C/svg%3E' }}">
             <div class="name">{{ user.name }}</div>
             <div class="count-tag">被强娶 {{ user.count }} 次</div>
         </div>

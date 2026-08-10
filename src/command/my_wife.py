@@ -3,6 +3,7 @@ from datetime import datetime
 from astrbot.api.event import AstrMessageEvent
 
 from ..utils import is_allowed_group
+from ..user_profiles import get_display_name
 
 
 async def cmd_show_history(plugin_instance, event: AstrMessageEvent):
@@ -30,6 +31,9 @@ async def cmd_show_history(plugin_instance, event: AstrMessageEvent):
     res = [f"🌸 你今日的老婆记录 ({len(user_recs)}/{daily_limit})："]
     for i, r in enumerate(user_recs, 1):
         time_str = datetime.fromisoformat(r["timestamp"]).strftime("%H:%M")
-        res.append(f"{i}. 【{r['wife_name']}】 ({time_str})")
+        wife_name = get_display_name(
+            plugin_instance, event, r["wife_id"], fallback=r["wife_name"]
+        )
+        res.append(f"{i}. 【{wife_name}】 ({time_str})")
     res.append(f"\n剩余次数：{max(0, daily_limit - len(user_recs))}次")
     yield event.plain_result("\n".join(res))

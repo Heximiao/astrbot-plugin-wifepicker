@@ -20,6 +20,7 @@ from ..core import (
     send_onebot_message,
 )
 from ..utils import is_allowed_group, resolve_member_name, save_json
+from ..user_profiles import get_avatar_url, get_display_name
 from ...waifu_relations import maybe_add_other_half_record
 
 PICK_RESPONSE_SECONDS = 30
@@ -203,7 +204,7 @@ async def _draw_candidates(
 
     result: list[tuple[str, str]] = []
     for uid in chosen:
-        name = f"用户({uid})"
+        name = get_display_name(plugin_instance, event, uid)
         try:
             name = resolve_member_name(members, user_id=uid, fallback=name)
         except Exception:
@@ -273,7 +274,7 @@ async def _send_pick_confirmation(
     plugin_instance, event: AstrMessageEvent, user_id: str, wife_id: str, wife_name: str
 ):
     """发送挑选确认结果（含所选老婆头像）。"""
-    avatar_url = f"https://q4.qlogo.cn/headimg_dl?dst_uin={wife_id}&spec=640"
+    avatar_url = get_avatar_url(plugin_instance, event, wife_id)
     text = f" 你挑选了【{wife_name}】作为你的今日老婆！❤️\n请好好对待她哦~"
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
@@ -292,8 +293,9 @@ async def _send_pick_confirmation(
     chain = [
         Comp.At(qq=user_id),
         Comp.Plain(text),
-        Comp.Image.fromURL(avatar_url),
     ]
+    if avatar_url:
+        chain.append(Comp.Image.fromURL(avatar_url))
     yield event.chain_result(chain)
 
 
@@ -381,7 +383,12 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     _delete_request(group_id, user_id)
 
     timestamp = datetime.now().isoformat()
-    user_name = event.get_sender_name() or f"用户({user_id})"
+    user_name = get_display_name(
+        plugin_instance,
+        event,
+        user_id,
+        fallback=event.get_sender_name() or f"用户({user_id})",
+    )
     group_records = get_group_records(plugin_instance, group_id)
     group_records.append(
         {

@@ -3,7 +3,12 @@
         "type": "int",
         "description": "每日抽取上限",
         "hint": "每位用户每天可以抽取老婆的次数上限，最好设置为一次，后面很多功能都是基于上限为一开发的，多次可能会出现一些兼容性问题。",
-        "default": 1
+        "default": 1,
+        "slider": {
+            "min": 1,
+            "max": 3,
+            "step": 1
+        }
     },
     "force_marry_cd": {
         "type": "int",
