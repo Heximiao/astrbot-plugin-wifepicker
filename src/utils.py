@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import tempfile
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
@@ -13,16 +14,42 @@ def load_json(path: str, default: object):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        logger.error(f"读取 JSON 数据失败，使用默认值: path={path}, error={e}")
         return default
 
 
-def save_json(path: str, data: dict, records_file: str = None, config: object = None):
+def save_json(path: str, data: object, records_file: str = None, config: object = None):
+    temp_path = None
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        directory = os.path.dirname(os.path.abspath(path))
+        os.makedirs(directory, exist_ok=True)
+
+        # Write beside the destination so os.replace remains atomic on macOS,
+        # Linux and Windows, even when the data directory is on another volume.
+        fd, temp_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(path)}.",
+            suffix=".tmp",
+            dir=directory,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(temp_path, path)
+        temp_path = None
+        return True
     except Exception as e:
-        logger.error(f"保存数据失败: {e}")
+        logger.error(f"保存 JSON 数据失败: path={path}, error={e}")
+        return False
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def normalize_user_id_set(values: object) -> set[str]:
