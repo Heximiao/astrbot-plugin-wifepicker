@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.1-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.2-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
@@ -107,9 +107,11 @@ astrbot-plugin-wifepicker/
 │   ├── constants.py           # 默认关键词路由表
 │   ├── core.py                # 抽取、记录、冷却、清理等核心逻辑
 │   ├── utils.py               # @ 目标解析、成员名解析、JSON 读写等工具函数
+│   ├── user_profiles.py       # 用户昵称、头像与官方资料缓存
 │   ├── debug.py               # 调试日志入口
 │   ├── debug_utils.py         # 关系图调试数据生成工具
 │   └── command/
+│       ├── breakup.py         # /分手 与 72 小时冷却
 │       ├── help.py            # /抽老婆帮助
 │       ├── my_wife.py         # /我的老婆
 │       ├── pick_wife.py       # /挑选老婆 与 重新挑选/放弃交互流程
@@ -123,4 +125,4 @@ astrbot-plugin-wifepicker/
 └── pic/                       # README 演示图片
 ```
 
-运行数据会写入 AstrBot 插件数据目录下的 `random_wife/`，常见文件包括 `wife_records.json`、`active_users.json`、`marriage_action_records.json` 和 `rbq_stats.json` 等。
+运行数据会写入 AstrBot 插件数据目录下的 `random_wife/`，常见文件包括 `wife_records.json`、`active_users.json`、`marriage_action_records.json`、`breakup_cooldowns.json` 和 `rbq_stats.json` 等。
