@@ -4,3 +4,5 @@ display_name: 今日老婆
 version: v3.3.2
 author: 何夕
 repo: https://github.com/Heximiao/astrbot-plugin-wifepicker
+support_platforms:
+  - aiocqhttp

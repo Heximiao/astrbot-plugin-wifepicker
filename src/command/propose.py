@@ -15,6 +15,7 @@ from ..core import (
     set_propose_cooldown,
     upsert_user_wife_record,
 )
+from .forced_marriage import cmd_force_marry
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
 from ..user_profiles import get_display_name
 
@@ -261,7 +262,8 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             target_id = str(force_req["target_id"])
             _delete_force_confirmation(group_id, user_id)
             event.stop_event()
-            async for result in plugin_instance._cmd_force_marry(
+            async for result in cmd_force_marry(
+                plugin_instance,
                 event, target_id_override=target_id
             ):
                 yield result

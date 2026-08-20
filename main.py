@@ -17,6 +17,7 @@ from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
 from .src.command.help import cmd_show_help
 from .src.command.breakup import cmd_breakup
+from .src.command.forced_marriage import cmd_force_marry
 from .src.command.my_wife import cmd_show_history
 from .src.command.pick_wife import cmd_pick_wife, handle_pick_response
 from .src.command.propose import cmd_propose, handle_propose_response
@@ -124,7 +125,7 @@ class RandomWifePlugin(Star):
         self._keyword_handlers = {
             "draw_wife": self._cmd_draw_wife,
             "show_history": self._cmd_show_history,
-            "force_marry": self._cmd_force_marry,
+            "force_marry": cmd_force_marry,
             "show_graph": self._cmd_show_graph,
             "rbq_ranking": self.rbq_ranking,
             "show_help": self._cmd_show_help,
@@ -164,9 +165,7 @@ class RandomWifePlugin(Star):
         # 2. @bot / 唤醒前缀场景下跳过，交给 @filter.command 处理。
         #    原因：WakingCheckStage 会把 keyword_trigger（EventMessageTypeFilter 不检查
         #    is_at_or_wake_command）和对应的 CommandFilter handler 同时加入
-        #    activated_handlers；而 StarRequestSubStage 在每个 handler 执行后调用
-        #    event.clear_result() 会清掉 stop_event() 的标志，导致两个 handler
-        #    依次执行造成双重触发。
+        #    activated_handlers；命令 handler 需要停止事件，避免后续 LLM 阶段继续处理。
         if event.is_at_or_wake_command:
             return
 
@@ -180,6 +179,8 @@ class RandomWifePlugin(Star):
         if route is None:
             route = self._keyword_router.match_command_route(message_str)
         if route:
+            # 关键词命中后立即停止事件，避免插件回复后继续进入 LLM。
+            event.stop_event()
             # 记录活跃（既然说话了就要进池子）
             record_active(self, event)
             # 找到对应的函数，比如 _cmd_draw_wife
@@ -189,9 +190,6 @@ class RandomWifePlugin(Star):
                 async for result in handler(event):
                     yield result
                 
-                # 处理完了，停止事件，防止再触发别的
-                event.stop_event()
-
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
         remember_official_profile(self, event)
@@ -207,6 +205,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("今日老婆", alias={"抽老婆", "jrlp"})
     async def draw_wife(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in self._cmd_draw_wife(event):
             yield result
 
@@ -441,6 +440,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp"})
     async def show_history(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in self._cmd_show_history(event):
             yield result
 
@@ -450,6 +450,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("分手", alias={"fs"})
     async def breakup(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in self._cmd_breakup(event):
             yield result
 
@@ -460,162 +461,13 @@ class RandomWifePlugin(Star):
     @filter.command("强娶", alias={"qiangqu"})
     async def force_marry(self, event: AstrMessageEvent):
         """强娶 + @要娶的那个人"""
-        async for result in self._cmd_force_marry(event):
+        event.stop_event()
+        async for result in cmd_force_marry(self, event):
             yield result
-
-    async def _cmd_force_marry(
-        self, event: AstrMessageEvent, target_id_override: str | None = None
-    ):
-        """强娶 + @要娶的那个人"""
-        if event.is_private_chat():
-            yield event.plain_result("此功能仅在群聊中可用哦~")
-            return
-
-        user_id = str(event.get_sender_id())
-        bot_id = str(event.get_self_id())
-        group_id = str(event.get_group_id())
-        if not is_allowed_group(group_id, self.config):
-            return
-
-        now = time.time()
-        user_propose_cd = get_propose_cooldown_status(self, group_id, user_id)
-        if user_propose_cd:
-            remaining_text = _format_remaining_seconds(user_propose_cd["remaining"])
-            yield event.plain_result(f"你还在求婚冷却期内，请等待 {remaining_text} 后再强娶。")
-            return
-
-        user_force_cd = get_force_marry_cooldown_status(self, group_id, user_id)
-        if user_force_cd:
-            remaining_text = _format_remaining_seconds(user_force_cd["remaining"])
-            reset_text = user_force_cd["reset_dt"].strftime("%m-%d %H:%M")
-            yield event.plain_result(
-                f"你已经强娶过啦！\n请等待：{remaining_text}后再试。\n"
-                f"(重置时间：{reset_text})"
-            )
-            return
-
-        target_id = (
-            str(target_id_override)
-            if target_id_override
-            else extract_target_id_from_message(event)
-        )
-
-        if not target_id or target_id == "all":
-            yield event.plain_result("请 @ 一个你想强娶的人。")
-            return
-
-        if target_id == user_id:
-            yield event.plain_result("不能娶自己！")
-            return
-
-        target_propose_cd = get_propose_cooldown_status(self, group_id, target_id)
-        if target_propose_cd:
-            remaining_text = _format_remaining_seconds(target_propose_cd["remaining"])
-            yield event.plain_result(
-                f"对方还在求婚冷却期内，请等待 {remaining_text} 后再强娶。"
-            )
-            return
-
-        force_excluded = force_marry_excluded_users(self)
-        if not self.config.get("allow_marry_bot", False):
-            force_excluded.add(bot_id)
-        force_excluded.add("0")
-        if target_id in force_excluded:
-            yield event.plain_result("该用户在强娶排除列表中，无法被强娶。")
-            return
-
-        # 获取名字
-        target_name = get_display_name(self, event, target_id)
-        user_name = get_display_name(
-            self, event, user_id, fallback=event.get_sender_name() or f"用户({user_id})"
-        )
-        members = []
-        try:
-            if event.get_platform_name() == "aiocqhttp":
-                assert isinstance(event, AiocqhttpMessageEvent)
-                members = await event.bot.api.call_action(
-                    "get_group_member_list", group_id=int(group_id)
-                )
-                if (
-                    isinstance(members, dict)
-                    and "data" in members
-                    and isinstance(members["data"], list)
-                ):
-                    members = members["data"]
-
-                target_name = resolve_member_name(
-                    members, user_id=target_id, fallback=target_name
-                )
-                user_name = resolve_member_name(
-                    members, user_id=user_id, fallback=user_name
-                )
-        except Exception:
-            pass
-
-        group_records = get_group_records(self, group_id)
-
-        # 记录被强娶者的信息（rbq 统计）
-        if group_id not in self.rbq_stats:
-            self.rbq_stats[group_id] = {}
-        if target_id not in self.rbq_stats[group_id]:
-            self.rbq_stats[group_id][target_id] = []
-
-        self.rbq_stats[group_id][target_id].append(time.time())
-        clean_rbq_stats(self)  # 记录时顺便清理
-        save_json(self.rbq_stats_file, self.rbq_stats)
-
-        timestamp = datetime.now().isoformat()
-        upsert_user_wife_record(
-            group_records,
-            user_id=user_id,
-            wife_id=target_id,
-            wife_name=target_name,
-            timestamp=timestamp,
-            daily_limit=self.config.get("daily_limit", 1),
-        )
-
-        maybe_add_other_half_record(
-            records=group_records,
-            user_id=user_id,
-            user_name=user_name,
-            wife_id=target_id,
-            wife_name=target_name,
-            enabled=auto_set_other_half_enabled(self),
-            timestamp=timestamp,
-        )
-
-        # --- 更新该群的强娶冷却时间 ---
-        self.forced_records[group_id][user_id] = now
-
-        save_json(self.records_file, self.records)
-        save_json(self.forced_file, self.forced_records)
-
-        avatar_url = get_avatar_url(self, event, target_id)
-        text = f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"
-        if can_onebot_withdraw(self, event):
-            message_id = await send_onebot_message(
-                self,
-                event,
-                message=[
-                    {"type": "at", "data": {"qq": user_id}},
-                    {"type": "text", "data": {"text": text}},
-                    {"type": "image", "data": {"file": avatar_url}},
-                ],
-            )
-            if message_id is not None:
-                schedule_onebot_delete_msg(self, event.bot, message_id=message_id)
-            return
-
-        chain = [
-            Comp.At(qq=user_id),
-            Comp.Plain(text),
-        ]
-        if avatar_url:
-            chain.append(Comp.Image.fromURL(avatar_url))
-        yield event.chain_result(chain)
 
     @filter.command("关系图", alias={"gxt"})
     async def show_graph(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in cmd_show_graph(self, event):
             yield result
 
@@ -625,12 +477,14 @@ class RandomWifePlugin(Star):
 
     @filter.command("rbq排行", alias={"rbqph"})
     async def rbq_ranking(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in cmd_rbq_ranking(self, event):
             yield result
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录", alias={"czjl"})
     async def reset_records(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in self._cmd_reset_records(event):
             yield result
 
@@ -644,6 +498,7 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间", alias={"czqqsj"})
     async def reset_force_cd(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in self._cmd_reset_force_cd(event):
             yield result
 
@@ -662,11 +517,13 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置求婚时间", alias={"czqhsj"})
     async def reset_propose_cd(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in cmd_reset_propose_cd(self, event):
             yield result
 
     @filter.command("抽老婆帮助", alias={"老婆插件帮助", "clpbz"})
     async def show_help(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in cmd_show_help(self, event):
             yield result
 
@@ -676,6 +533,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("debug_graph")
     async def debug_graph(self, event: AstrMessageEvent):
+        event.stop_event()
         '''
         调试关系图渲染
         '''
@@ -685,12 +543,14 @@ class RandomWifePlugin(Star):
         
     @filter.command("求婚", alias={"qh"})
     async def propose_command(self, event: AstrMessageEvent):
+        event.stop_event()
         # 调用外部的发起求婚逻辑
         async for result in cmd_propose(self, event):
             yield result
 
     @filter.command("挑选老婆", alias={"txlp"})
     async def pick_wife(self, event: AstrMessageEvent):
+        event.stop_event()
         async for result in self._cmd_pick_wife(event):
             yield result
 

@@ -1,3 +1,6 @@
 __pycache__/*
+__pycache__/
+*.py[cod]
+*$py.class
 tests/*
 !tests/test_json_storage.py
