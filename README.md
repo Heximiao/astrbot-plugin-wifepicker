@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.2-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.3-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
