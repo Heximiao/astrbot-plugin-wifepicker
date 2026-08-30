@@ -396,6 +396,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
             "wife_id": wife_id,
             "wife_name": wife_name,
             "timestamp": timestamp,
+            "picked": True,
         }
     )
 
