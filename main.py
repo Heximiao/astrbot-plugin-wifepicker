@@ -125,7 +125,7 @@ class RandomWifePlugin(Star):
         self._keyword_handlers = {
             "draw_wife": self._cmd_draw_wife,
             "show_history": self._cmd_show_history,
-            "force_marry": cmd_force_marry,
+            "force_marry": self._cmd_force_marry,
             "show_graph": self._cmd_show_graph,
             "rbq_ranking": self.rbq_ranking,
             "show_help": self._cmd_show_help,
@@ -462,6 +462,10 @@ class RandomWifePlugin(Star):
     async def force_marry(self, event: AstrMessageEvent):
         """强娶 + @要娶的那个人"""
         event.stop_event()
+        async for result in cmd_force_marry(self, event):
+            yield result
+
+    async def _cmd_force_marry(self, event: AstrMessageEvent):
         async for result in cmd_force_marry(self, event):
             yield result
 
