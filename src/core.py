@@ -368,7 +368,14 @@ def force_marry_excluded_users(plugin) -> Set[str]:
 def ensure_today_records(plugin) -> None:
     today = datetime.now().strftime("%Y-%m-%d")
     if plugin.records.get("date") != today:
-        plugin.records = {"date": today, "groups": {}}
+        pick_cooldowns = plugin.records.get("pick_cooldowns", {})
+        if not isinstance(pick_cooldowns, dict):
+            pick_cooldowns = {}
+        plugin.records = {
+            "date": today,
+            "groups": {},
+            "pick_cooldowns": pick_cooldowns,
+        }
 
 
 def get_group_records(plugin, group_id: str) -> list:

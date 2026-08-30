@@ -493,11 +493,22 @@ class RandomWifePlugin(Star):
             yield result
 
     async def _cmd_reset_records(self, event: AstrMessageEvent):
-        self.records = {"date": datetime.now().strftime("%Y-%m-%d"), "groups": {}}
+        group_id = str(event.get_group_id())
+        pick_cooldowns = self.records.get("pick_cooldowns", {})
+        if not isinstance(pick_cooldowns, dict):
+            pick_cooldowns = {}
+        pick_cooldowns.pop(group_id, None)
+        self.records = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "groups": {},
+            "pick_cooldowns": pick_cooldowns,
+        }
         self.breakup_records = {}
         save_json(self.records_file, self.records)
         save_json(self.breakup_file, self.breakup_records)
-        yield event.plain_result("今日抽取记录和分手冷却时间已重置！")
+        yield event.plain_result(
+            "今日抽取记录、分手冷却时间和本群挑选老婆冷却已重置！"
+        )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间", alias={"czqqsj"})

@@ -2,6 +2,7 @@ import random
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from math import ceil
 
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
@@ -24,6 +25,7 @@ from ..user_profiles import get_avatar_url, get_display_name
 from ...waifu_relations import maybe_add_other_half_record
 
 PICK_RESPONSE_SECONDS = 30
+PICK_COOLDOWN_SECONDS = 24 * 60 * 60
 MAX_CANDIDATES = 6
 DEFAULT_CANDIDATE_COUNT = 3
 DEFAULT_RETRY_LIMIT = 2
@@ -46,6 +48,63 @@ class PickRequest:
 
 
 pick_requests: dict[str, dict[str, PickRequest]] = {}
+
+
+def _get_pick_cooldowns(plugin_instance) -> dict[str, dict[str, float]]:
+    """Return persisted per-group cooldown records for the pick command."""
+    cooldowns = plugin_instance.records.get("pick_cooldowns")
+    if not isinstance(cooldowns, dict):
+        cooldowns = {}
+        plugin_instance.records["pick_cooldowns"] = cooldowns
+    return cooldowns
+
+
+def _get_pick_cooldown_remaining(
+    plugin_instance, group_id: str, user_id: str
+) -> float:
+    """Return the remaining rolling 24-hour cooldown in seconds."""
+    group_cooldowns = _get_pick_cooldowns(plugin_instance).get(group_id)
+    if not isinstance(group_cooldowns, dict):
+        return 0
+
+    try:
+        remaining = (
+            float(group_cooldowns.get(user_id))
+            + PICK_COOLDOWN_SECONDS
+            - time.time()
+        )
+    except (TypeError, ValueError):
+        return 0
+    return max(0, remaining)
+
+
+def _set_pick_cooldown(plugin_instance, group_id: str, user_id: str) -> None:
+    """Start and persist the rolling cooldown after candidates are displayed."""
+    cooldowns = _get_pick_cooldowns(plugin_instance)
+    group_cooldowns = cooldowns.get(group_id)
+    if not isinstance(group_cooldowns, dict):
+        group_cooldowns = {}
+        cooldowns[group_id] = group_cooldowns
+    group_cooldowns[user_id] = time.time()
+    save_json(
+        plugin_instance.records_file,
+        plugin_instance.records,
+        plugin_instance.records_file,
+        plugin_instance.config,
+    )
+
+
+def _pick_cooldown_started_today(
+    plugin_instance, group_id: str, user_id: str
+) -> bool:
+    group_cooldowns = _get_pick_cooldowns(plugin_instance).get(group_id)
+    if not isinstance(group_cooldowns, dict):
+        return False
+    try:
+        started_at = datetime.fromtimestamp(float(group_cooldowns.get(user_id)))
+    except (TypeError, ValueError, OSError):
+        return False
+    return started_at.date() == datetime.now().date()
 
 
 def _get_retry_counts(plugin_instance, group_id: str) -> dict[str, int]:
@@ -237,6 +296,20 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         yield event.plain_result("你已经在挑选中了，请回复编号、重新挑选或放弃。")
         return
 
+    cooldown_remaining = _get_pick_cooldown_remaining(
+        plugin_instance, group_id, user_id
+    )
+    if cooldown_remaining > 0:
+        if _pick_cooldown_started_today(plugin_instance, group_id, user_id):
+            yield event.plain_result("你今天已经抽过/挑选过老婆了，明天再来吧！")
+        else:
+            remaining_minutes = max(1, ceil(cooldown_remaining / 60))
+            yield event.plain_result(
+                "「挑选老婆」每24小时只能使用一次，"
+                f"还剩 {remaining_minutes} 分钟，请稍后再试。"
+            )
+        return
+
     retry_limit = _get_retry_limit(plugin_instance)
     used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
     if retry_limit > 0 and used_retry_count >= retry_limit:
@@ -254,6 +327,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         return
 
     used_retry_count = _consume_retry(plugin_instance, group_id, user_id)
+    _set_pick_cooldown(plugin_instance, group_id, user_id)
     now = time.time()
     req = PickRequest(
         group_id=group_id,
