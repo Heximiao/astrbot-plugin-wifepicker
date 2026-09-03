@@ -22,6 +22,7 @@ from ..core import (
 from ...waifu_relations import maybe_add_other_half_record
 from ..user_profiles import get_avatar_url, get_display_name
 from ..utils import extract_target_id_from_message, is_allowed_group, resolve_member_name, save_json
+from ..i18n import format_duration, tr
 
 
 def _format_remaining_seconds(seconds: float) -> str:
@@ -45,7 +46,7 @@ async def cmd_force_marry(
 ):
     """强娶 + @要娶的那个人"""
     if event.is_private_chat():
-        yield event.plain_result("此功能仅在群聊中可用哦~")
+        yield event.plain_result(tr(plugin_instance, "group_only"))
         return
 
     user_id = str(event.get_sender_id())
@@ -57,17 +58,23 @@ async def cmd_force_marry(
     now = time.time()
     user_propose_cd = get_propose_cooldown_status(plugin_instance, group_id, user_id)
     if user_propose_cd:
-        remaining_text = _format_remaining_seconds(user_propose_cd["remaining"])
-        yield event.plain_result(f"你还在求婚冷却期内，请等待 {remaining_text} 后再强娶。")
+        remaining_text = format_duration(plugin_instance, user_propose_cd["remaining"])
+        yield event.plain_result(
+            tr(plugin_instance, "force_propose_cd", remaining=remaining_text)
+        )
         return
 
     user_force_cd = get_force_marry_cooldown_status(plugin_instance, group_id, user_id)
     if user_force_cd:
-        remaining_text = _format_remaining_seconds(user_force_cd["remaining"])
+        remaining_text = format_duration(plugin_instance, user_force_cd["remaining"])
         reset_text = user_force_cd["reset_dt"].strftime("%m-%d %H:%M")
         yield event.plain_result(
-            f"你已经强娶过啦！\n请等待：{remaining_text}后再试。\n"
-            f"(重置时间：{reset_text})"
+            tr(
+                plugin_instance,
+                "force_self_cd",
+                remaining=remaining_text,
+                reset_time=reset_text,
+            )
         )
         return
 
@@ -78,20 +85,20 @@ async def cmd_force_marry(
     )
 
     if not target_id or target_id == "all":
-        yield event.plain_result("请 @ 一个你想强娶的人。")
+        yield event.plain_result(tr(plugin_instance, "force_need_target"))
         return
 
     if target_id == user_id:
-        yield event.plain_result("不能娶自己！")
+        yield event.plain_result(tr(plugin_instance, "marry_self"))
         return
 
     target_propose_cd = get_propose_cooldown_status(
         plugin_instance, group_id, target_id
     )
     if target_propose_cd:
-        remaining_text = _format_remaining_seconds(target_propose_cd["remaining"])
+        remaining_text = format_duration(plugin_instance, target_propose_cd["remaining"])
         yield event.plain_result(
-            f"对方还在求婚冷却期内，请等待 {remaining_text} 后再强娶。"
+            tr(plugin_instance, "force_target_propose_cd", remaining=remaining_text)
         )
         return
 
@@ -100,7 +107,7 @@ async def cmd_force_marry(
         force_excluded.add(bot_id)
     force_excluded.add("0")
     if target_id in force_excluded:
-        yield event.plain_result("该用户在强娶排除列表中，无法被强娶。")
+        yield event.plain_result(tr(plugin_instance, "force_excluded"))
         return
 
     target_name = get_display_name(plugin_instance, event, target_id)
@@ -170,7 +177,7 @@ async def cmd_force_marry(
     save_json(plugin_instance.forced_file, plugin_instance.forced_records)
 
     avatar_url = get_avatar_url(plugin_instance, event, target_id)
-    result_text = f" 你今天强娶了【{target_name}】哦❤️~\n请对她好一点哦~。\n"
+    result_text = tr(plugin_instance, "force_success", target_name=target_name)
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
             plugin_instance,

@@ -5,11 +5,12 @@ from astrbot.api.event import AstrMessageEvent
 
 from ..core import clean_rbq_stats
 from ..user_profiles import get_avatar_url, get_display_name
+from ..i18n import tr
 
 
 async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
     if event.is_private_chat():
-        yield event.plain_result("私聊看不了榜单哦~")
+        yield event.plain_result(tr(plugin_instance, "ranking_private"))
         return
 
     group_id = str(event.get_group_id())
@@ -17,7 +18,7 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
 
     group_data = plugin_instance.rbq_stats.get(group_id, {})
     if not group_data:
-        yield event.plain_result("本群近30天还没有人被强娶过，大家都很有礼貌呢。")
+        yield event.plain_result(tr(plugin_instance, "ranking_empty"))
         return
 
     user_map = {}
@@ -58,7 +59,7 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
         plugin_instance.curr_dir, "template", "rbq_ranking.html"
     )
     if not os.path.exists(template_path):
-        yield event.plain_result("错误：找不到排行模板 rbq_ranking.html")
+        yield event.plain_result(tr(plugin_instance, "ranking_template_missing"))
         return
 
     with open(template_path, "r", encoding="utf-8") as f:
@@ -76,7 +77,7 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
             {
                 "group_id": group_id,
                 "ranking": top_10,
-                "title": "❤️ 群rbq月榜 ❤️",
+                "title": tr(plugin_instance, "ranking_title"),
             },
             options={
                 "type": "png",

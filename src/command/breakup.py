@@ -6,6 +6,7 @@ from astrbot.api.event import AstrMessageEvent
 from ..core import get_group_records
 from ..user_profiles import get_display_name
 from ..utils import is_allowed_group, save_json
+from ..i18n import format_duration, tr
 
 
 BREAKUP_COOLDOWN_SECONDS = 72 * 60 * 60
@@ -53,7 +54,7 @@ def _is_force_marriage(plugin_instance, group_id: str, user_id: str, record: dic
 async def cmd_breakup(plugin_instance, event: AstrMessageEvent):
     """解除当前用户的普通老婆关系，成功后进入 72 小时冷却。"""
     if event.is_private_chat():
-        yield event.plain_result("分手只能在群聊中进行哦~")
+        yield event.plain_result(tr(plugin_instance, "breakup_group_only"))
         return
 
     group_id = str(event.get_group_id())
@@ -67,7 +68,11 @@ async def cmd_breakup(plugin_instance, event: AstrMessageEvent):
         remaining = last_breakup_at + BREAKUP_COOLDOWN_SECONDS - now
         if remaining > 0:
             yield event.plain_result(
-                f"你还在分手冷却期内，请等待 {_format_remaining_seconds(remaining)} 后再试。"
+                tr(
+                    plugin_instance,
+                    "breakup_cooldown",
+                    remaining=format_duration(plugin_instance, remaining),
+                )
             )
             return
 
@@ -78,14 +83,14 @@ async def cmd_breakup(plugin_instance, event: AstrMessageEvent):
         if str(record.get("user_id")) == user_id
     ]
     if not user_records:
-        yield event.plain_result("你现在还没有老婆，无法分手哦。")
+        yield event.plain_result(tr(plugin_instance, "breakup_no_wife"))
         return
 
     if any(
         _is_force_marriage(plugin_instance, group_id, user_id, record)
         for record in user_records
     ):
-        yield event.plain_result("强娶的老婆不能分手！")
+        yield event.plain_result(tr(plugin_instance, "breakup_forced"))
         return
 
     wife_ids = {str(record.get("wife_id")) for record in user_records}
@@ -124,5 +129,5 @@ async def cmd_breakup(plugin_instance, event: AstrMessageEvent):
 
     wife_text = "、".join(f"【{name}】" for name in wife_names)
     yield event.plain_result(
-        f"你已经和{wife_text}分手了。分手指令将在 72 小时后恢复使用。"
+        tr(plugin_instance, "breakup_success", wives=wife_text)
     )

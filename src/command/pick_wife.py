@@ -23,6 +23,7 @@ from ..core import (
 from ..utils import is_allowed_group, resolve_member_name, save_json
 from ..user_profiles import get_avatar_url, get_display_name
 from ...waifu_relations import maybe_add_other_half_record
+from ..i18n import tr
 
 PICK_RESPONSE_SECONDS = 30
 PICK_COOLDOWN_SECONDS = 24 * 60 * 60
@@ -30,8 +31,8 @@ MAX_CANDIDATES = 6
 DEFAULT_CANDIDATE_COUNT = 3
 DEFAULT_RETRY_LIMIT = 2
 
-RESELECT_KEYWORDS = ("重新挑选", "重新抽")
-ABANDON_KEYWORDS = ("放弃", "取消挑选")
+RESELECT_KEYWORDS = ("重新挑选", "重新抽", "reselect", "選び直す")
+ABANDON_KEYWORDS = ("放弃", "取消挑选", "give up", "cancel", "やめる")
 
 
 @dataclass(frozen=True)
@@ -206,14 +207,14 @@ def _delete_request(group_id: str, user_id: str) -> None:
 
 # 这个函数用于生成候选列表的文本展示（人话：给你看看有谁可以选，你挑一个）
 
-def _format_candidate_list(req: PickRequest) -> str:
+def _format_candidate_list(plugin_instance, req: PickRequest) -> str:
     """生成纯文本候选编号列表（不带头像）。"""
     lines = [
-        "🌹 请选择你的老婆（回复编号，30秒内有效）：",
+        tr(plugin_instance, "pick_list_title"),
     ]
     for index, name in enumerate(req.candidate_names, 1):
         lines.append(f"{index}. {name}")
-    lines.append("\n回复「重新挑选」换一批，回复「放弃」取消。")
+    lines.append(tr(plugin_instance, "pick_list_footer"))
     return "\n".join(lines)
 
 
@@ -276,7 +277,7 @@ async def _draw_candidates(
 async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     """「挑选老婆」命令入口：校验后抽取候选并展示编号列表。"""
     if event.is_private_chat():
-        yield event.plain_result("此功能仅在群聊中可用哦~")
+        yield event.plain_result(tr(plugin_instance, "group_only"))
         return
 
     group_id = str(event.get_group_id())
@@ -288,12 +289,12 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     today_count = len([r for r in group_records if r["user_id"] == user_id])
     daily_limit = plugin_instance.config.get("daily_limit", 1)
     if today_count >= daily_limit:
-        yield event.plain_result("你今天已经抽过/挑选过老婆了，明天再来吧！")
+        yield event.plain_result(tr(plugin_instance, "pick_already_done"))
         return
 
     _cleanup_expired_requests(group_id)
     if isinstance(pick_requests.get(group_id, {}).get(user_id), PickRequest):
-        yield event.plain_result("你已经在挑选中了，请回复编号、重新挑选或放弃。")
+        yield event.plain_result(tr(plugin_instance, "pick_in_progress"))
         return
 
     cooldown_remaining = _get_pick_cooldown_remaining(
@@ -301,12 +302,11 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     )
     if cooldown_remaining > 0:
         if _pick_cooldown_started_today(plugin_instance, group_id, user_id):
-            yield event.plain_result("你今天已经抽过/挑选过老婆了，明天再来吧！")
+            yield event.plain_result(tr(plugin_instance, "pick_already_done"))
         else:
             remaining_minutes = max(1, ceil(cooldown_remaining / 60))
             yield event.plain_result(
-                "「挑选老婆」每24小时只能使用一次，"
-                f"还剩 {remaining_minutes} 分钟，请稍后再试。"
+                tr(plugin_instance, "pick_cooldown", minutes=remaining_minutes)
             )
         return
 
@@ -314,7 +314,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
     if retry_limit > 0 and used_retry_count >= retry_limit:
         yield event.plain_result(
-            f"你今天的候选批次已用完（{retry_limit}批），可以使用「今日老婆」随机抽取。"
+            tr(plugin_instance, "pick_batches_used", limit=retry_limit)
         )
         return
 
@@ -322,7 +322,11 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     candidates = await _draw_candidates(plugin_instance, event, user_id, count)
     if not candidates:
         yield event.plain_result(
-            f"老婆池为空（需有人在{get_active_user_days(plugin_instance)}天内发言）。"
+            tr(
+                plugin_instance,
+                "wife_pool_empty",
+                days=get_active_user_days(plugin_instance),
+            )
         )
         return
 
@@ -340,7 +344,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     )
     pick_requests.setdefault(group_id, {})[user_id] = req
 
-    yield event.plain_result(_format_candidate_list(req))
+    yield event.plain_result(_format_candidate_list(plugin_instance, req))
 
 
 # 把选中的老婆发出来（人话：官宣，你挑中Ta了）
@@ -349,7 +353,7 @@ async def _send_pick_confirmation(
 ):
     """发送挑选确认结果（含所选老婆头像）。"""
     avatar_url = get_avatar_url(plugin_instance, event, wife_id)
-    text = f" 你挑选了【{wife_name}】作为你的今日老婆！❤️\n请好好对待她哦~"
+    text = tr(plugin_instance, "pick_success", wife_name=wife_name)
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
             plugin_instance,
@@ -393,7 +397,11 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         if not _can_retry(plugin_instance, group_id, user_id):
             event.stop_event()
             yield event.plain_result(
-                f"已达到候选批次上限（{_get_retry_limit(plugin_instance)}批），请从当前候选中选择或放弃。"
+                tr(
+                    plugin_instance,
+                    "pick_retry_limit",
+                    limit=_get_retry_limit(plugin_instance),
+                )
             )
             return
 
@@ -402,7 +410,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         if not candidates:
             _delete_request(group_id, user_id)
             event.stop_event()
-            yield event.plain_result("老婆池为空，请稍后再试。")
+            yield event.plain_result(tr(plugin_instance, "wife_pool_retry"))
             return
 
         used_retry_count = _consume_retry(plugin_instance, group_id, user_id)
@@ -417,7 +425,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         )
         pick_requests[group_id][user_id] = new_req
         event.stop_event()
-        yield event.plain_result(_format_candidate_list(new_req))
+        yield event.plain_result(_format_candidate_list(plugin_instance, new_req))
         return
 
     # 用户放弃挑选，把名额还回去（人话：这婚不结了，下次再说）
@@ -427,17 +435,15 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         event.stop_event()
         retry_limit = _get_retry_limit(plugin_instance)
         if retry_limit > 0 and used_retry_count >= retry_limit:
-            yield event.plain_result(
-                "已放弃本次挑选，今天的候选批次已用完；仍可使用「今日老婆」随机抽取。"
-            )
+            yield event.plain_result(tr(plugin_instance, "pick_abandon_used"))
         else:
             remaining_text = (
-                "不限"
+                tr(plugin_instance, "unlimited")
                 if retry_limit <= 0
                 else str(max(0, retry_limit - used_retry_count))
             )
             yield event.plain_result(
-                f"已放弃本次挑选，本次不占每日抽取名额；剩余候选批次：{remaining_text}。"
+                tr(plugin_instance, "pick_abandon", remaining=remaining_text)
             )
         return
 
@@ -449,7 +455,9 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     index = int(msg)
     if not (1 <= index <= len(req.candidates)):
         event.stop_event()
-        yield event.plain_result(f"请输入有效的编号（1-{len(req.candidates)}）哦~")
+        yield event.plain_result(
+            tr(plugin_instance, "pick_invalid_number", max=len(req.candidates))
+        )
         return
 
     wife_id = req.candidates[index - 1]

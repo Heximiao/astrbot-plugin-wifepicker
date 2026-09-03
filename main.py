@@ -41,6 +41,7 @@ from .src.utils import (
 
 from .src.debug import debug_log
 from .src.debug_utils import run_debug_graph
+from .src.i18n import tr
 # 新增：导入 core helpers
 from .src.core import (
     ACTIVE_USERS_SAVE_INTERVAL_SECONDS,
@@ -213,7 +214,7 @@ class RandomWifePlugin(Star):
         # 清理完不在群的人后
         
         if event.is_private_chat():
-            yield event.plain_result("此功能仅在群聊中可用哦~")
+            yield event.plain_result(tr(self, "group_only"))
             return
 
         group_id = str(event.get_group_id())
@@ -257,7 +258,7 @@ class RandomWifePlugin(Star):
                             {
                                 "type": "text",
                                 "data": {
-                                    "text": f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"
+                                    "text": tr(self, "wife_existing", wife_name=wife_name)
                                 },
                             },
                             {"type": "image", "data": {"file": wife_avatar}},
@@ -269,13 +270,13 @@ class RandomWifePlugin(Star):
 
                 chain = [
                     Comp.At(qq=user_id),
-                    Comp.Plain(f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"),
+                    Comp.Plain(tr(self, "wife_existing", wife_name=wife_name)),
                 ]
                 if wife_avatar:
                     chain.append(Comp.Image.fromURL(wife_avatar))
                 yield event.chain_result(chain)
             else:
-                text = f"你今天已经抽了{today_count}次老婆了，明天再来吧！"
+                text = tr(self, "daily_limit", count=today_count)
                 if can_onebot_withdraw(self, event):
                     message_id = await send_onebot_message(
                         self, event, message=[{"type": "text", "data": {"text": text}}]
@@ -352,7 +353,9 @@ class RandomWifePlugin(Star):
             f"excluded={len(excluded)} candidates={len(pool)}",
         )
         if not pool:
-            yield event.plain_result(f"老婆池为空（需有人在{get_active_user_days(self)}天内发言）。")
+            yield event.plain_result(
+                tr(self, "wife_pool_empty", days=get_active_user_days(self))
+            )
             return
 
         wife_id = random.choice(pool)
@@ -396,17 +399,19 @@ class RandomWifePlugin(Star):
         save_json(self.records_file, self.records, self.records_file, self.config)
 
         avatar_url = get_avatar_url(self, event, wife_id)
-        suffix_text = (
-            "\n请好好对待她哦❤️~ \n"
-            f"剩余抽取次数：{max(0, daily_limit - today_count - 1)}次"
+        suffix_text = tr(
+            self,
+            "draw_suffix",
+            remaining=max(0, daily_limit - today_count - 1),
         )
+        result_text = tr(self, "draw_result", wife_name=wife_name)
         
         at_waifu_enabled = self.config.get("at_waifu", False)
         if can_onebot_withdraw(self, event):
             # --- OneBot 路径改动 ---
             msg_list = [
                 {"type": "at", "data": {"qq": user_id}},
-                {"type": "text", "data": {"text": f" 你的今日老婆是：\n\n【{wife_name}】\n"}},
+                {"type": "text", "data": {"text": result_text}},
             ]
             
             # 如果开启了艾特老婆，就把老婆的 at 加进去
@@ -427,7 +432,7 @@ class RandomWifePlugin(Star):
         # --- AstrBot 标准路径改动 ---
         chain = [
             Comp.At(qq=user_id),
-            Comp.Plain(f" 你的今日老婆是：\n\n【{wife_name}】\n"),
+            Comp.Plain(result_text),
         ]
         
         if at_waifu_enabled:
@@ -506,9 +511,7 @@ class RandomWifePlugin(Star):
         self.breakup_records = {}
         save_json(self.records_file, self.records)
         save_json(self.breakup_file, self.breakup_records)
-        yield event.plain_result(
-            "今日抽取记录、分手冷却时间和本群挑选老婆冷却已重置！"
-        )
+        yield event.plain_result(tr(self, "reset_records"))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间", alias={"czqqsj"})
@@ -525,9 +528,9 @@ class RandomWifePlugin(Star):
             save_json(self.forced_file, self.forced_records)
 
             logger.info(f"[Wife] 已重置群 {group_id} 的强娶冷却时间")
-            yield event.plain_result("✅ 本群强娶冷却时间已重置！现在大家可以再次强娶了。")
+            yield event.plain_result(tr(self, "reset_force_done"))
         else:
-            yield event.plain_result("💡 本群目前没有人在冷却期内。")
+            yield event.plain_result(tr(self, "reset_force_empty"))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置求婚时间", alias={"czqhsj"})

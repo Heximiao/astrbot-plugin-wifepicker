@@ -66,6 +66,7 @@
 
 | 配置键 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
+| `language` | string | `zh-CN` | 聊天回复语言，可选简体中文、English、日本語 |
 | `daily_limit` | int | 1 | 每人每天可抽取的次数上限 |
 | `force_marry_cd` | int | 3 | 强娶后的冷却天数 |
 | `propose_cooldown_minutes` | int | 60 | 求婚成功后双方的冷却分钟数，设为 0 可关闭 |

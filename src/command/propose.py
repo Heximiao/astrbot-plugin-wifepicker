@@ -18,6 +18,7 @@ from ..core import (
 from .forced_marriage import cmd_force_marry
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
 from ..user_profiles import get_display_name
+from ..i18n import format_duration, tr
 
 # 群内待处理的求婚请求
 propose_requests = {}
@@ -142,7 +143,7 @@ def _format_remaining_seconds(seconds: float) -> str:
 async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     """发起求婚指令的逻辑"""
     if event.is_private_chat():
-        yield event.plain_result("求婚只能在群聊中进行哦~")
+        yield event.plain_result(tr(plugin_instance, "propose_group_only"))
         return
 
     user_id = str(event.get_sender_id())
@@ -150,37 +151,39 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     target_id = extract_target_id_from_message(event)
 
     if not target_id or target_id == "all":
-        yield event.plain_result("请 @ 一个你想求婚的人。")
+        yield event.plain_result(tr(plugin_instance, "propose_need_target"))
         return
     if target_id == user_id:
-        yield event.plain_result("不能向自己求婚哦！")
+        yield event.plain_result(tr(plugin_instance, "propose_self"))
         return
 
     user_force_cd = get_force_marry_cooldown_status(plugin_instance, group_id, user_id)
     if user_force_cd:
-        yield event.plain_result("你还在强娶冷却期内，暂时不能求婚。")
+        yield event.plain_result(tr(plugin_instance, "propose_force_cd_self"))
         return
 
     target_force_cd = get_force_marry_cooldown_status(
         plugin_instance, group_id, target_id
     )
     if target_force_cd:
-        yield event.plain_result("对方还在强娶冷却期内，暂时不能接受求婚。")
+        yield event.plain_result(tr(plugin_instance, "propose_force_cd_target"))
         return
 
     user_propose_cd = get_propose_cooldown_status(plugin_instance, group_id, user_id)
     if user_propose_cd:
-        remaining_text = _format_remaining_seconds(user_propose_cd["remaining"])
-        yield event.plain_result(f"你还在求婚冷却期内，请等待 {remaining_text} 后再试。")
+        remaining_text = format_duration(plugin_instance, user_propose_cd["remaining"])
+        yield event.plain_result(
+            tr(plugin_instance, "propose_cd_self", remaining=remaining_text)
+        )
         return
 
     target_propose_cd = get_propose_cooldown_status(
         plugin_instance, group_id, target_id
     )
     if target_propose_cd:
-        remaining_text = _format_remaining_seconds(target_propose_cd["remaining"])
+        remaining_text = format_duration(plugin_instance, target_propose_cd["remaining"])
         yield event.plain_result(
-            f"对方还在求婚冷却期内，请等待 {remaining_text} 后再试。"
+            tr(plugin_instance, "propose_cd_target", remaining=remaining_text)
         )
         return
 
@@ -203,7 +206,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
 
     pending_target_id, _ = _get_pending_request_by_proposer(group_id, user_id)
     if pending_target_id is not None:
-        yield event.plain_result("你已经有一个待处理的求婚了，请等待对方回复或 30 秒后再试。")
+        yield event.plain_result(tr(plugin_instance, "propose_pending"))
         return
 
     if group_id not in propose_requests:
@@ -223,8 +226,12 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     }
 
     yield event.plain_result(
-        f"🌹 @{event.get_sender_name()} 向【{target_name}】发起了求婚！\n"
-        '请在 30 秒内回复“同意”来接受，或回复“拒绝”来拒绝。'
+        tr(
+            plugin_instance,
+            "propose_sent",
+            sender_name=event.get_sender_name(),
+            target_name=target_name,
+        )
     )
 
     await asyncio.sleep(PROPOSE_RESPONSE_SECONDS)
@@ -234,7 +241,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
             chain_obj = MessageChain()
             chain_obj.chain = [
                 Comp.At(qq=user_id),
-                Comp.Plain(text=" ...很遗憾，求婚超时了，对方似乎没有答应..."),
+                Comp.Plain(text=tr(plugin_instance, "propose_timeout")),
             ]
 
             try:
@@ -258,7 +265,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
     if isinstance(force_req, dict):
         if _is_request_expired(force_req):
             _delete_force_confirmation(group_id, user_id)
-        elif msg in ["是", "确认", "强娶", "要"]:
+        elif msg.lower() in ["是", "确认", "强娶", "要", "yes", "confirm", "はい"]:
             target_id = str(force_req["target_id"])
             _delete_force_confirmation(group_id, user_id)
             event.stop_event()
@@ -268,10 +275,10 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             ):
                 yield result
             return
-        elif msg in ["否", "不", "不要", "算了", "取消"]:
+        elif msg.lower() in ["否", "不", "不要", "算了", "取消", "no", "cancel", "いいえ"]:
             _delete_force_confirmation(group_id, user_id)
             event.stop_event()
-            yield event.plain_result("已取消强娶。")
+            yield event.plain_result(tr(plugin_instance, "force_cancelled"))
             return
 
     _cleanup_expired_requests(group_id)
@@ -282,7 +289,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             _delete_request(group_id, user_id)
             return
 
-        if msg in ["同意求婚", "我同意", "同意"]:
+        if msg.lower() in ["同意求婚", "我同意", "同意", "accept", "yes", "同意します"]:
             proposer_id = req["proposer_id"]
             proposer_name = req["proposer_name"]
             target_name = req["target_name"]
@@ -295,7 +302,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             )
             if proposer_force_cd or target_force_cd:
                 _delete_requests_by_proposer(group_id, proposer_id)
-                yield event.plain_result("求婚已失效：你们中有人进入了强娶冷却期。")
+                yield event.plain_result(tr(plugin_instance, "propose_invalid"))
                 return
 
             timestamp = datetime.now().isoformat()
@@ -346,10 +353,14 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
 
             event.stop_event()
             yield event.plain_result(
-                f"🎉 恭喜！{target_name} 接受了 {proposer_name} 的求婚！\n"
-                "你们已正式结为夫妻！"
+                tr(
+                    plugin_instance,
+                    "propose_accepted",
+                    target_name=target_name,
+                    proposer_name=proposer_name,
+                )
             )
-        elif msg in ["拒绝求婚", "我拒绝", "拒绝", "不同意"]:
+        elif msg.lower() in ["拒绝求婚", "我拒绝", "拒绝", "不同意", "reject", "no", "拒否"]:
             proposer_id = req["proposer_id"]
             target_name = req["target_name"]
             _delete_request(group_id, user_id)
@@ -367,8 +378,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             chain = [
                 Comp.At(qq=proposer_id),
                 Comp.Plain(
-                    f" 很遗憾，【{target_name}】拒绝了你的求婚。\n"
-                    "是否强娶？请在 30 秒内回复“是”，否则不会进入强娶逻辑。"
+                    tr(plugin_instance, "propose_rejected", target_name=target_name)
                 ),
             ]
             yield event.chain_result(chain)

@@ -2,19 +2,20 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from ..utils import save_json
+from ..i18n import tr
 
 
 async def cmd_reset_propose_cd(plugin_instance, event: AstrMessageEvent):
     """Reset propose cooldown records for the current group."""
     if event.is_private_chat():
-        yield event.plain_result("求婚冷却时间只能在群聊中重置哦~")
+        yield event.plain_result(tr(plugin_instance, "reset_propose_group_only"))
         return
 
     group_id = str(event.get_group_id())
     group_records = plugin_instance.marriage_action_records.get(group_id)
 
     if not isinstance(group_records, dict) or not group_records:
-        yield event.plain_result("💡 本群目前没有人在求婚冷却期内。")
+        yield event.plain_result(tr(plugin_instance, "reset_propose_empty"))
         return
 
     reset_count = 0
@@ -27,7 +28,7 @@ async def cmd_reset_propose_cd(plugin_instance, event: AstrMessageEvent):
         plugin_instance.marriage_action_records.pop(group_id, None)
 
     if reset_count == 0:
-        yield event.plain_result("💡 本群目前没有人在求婚冷却期内。")
+        yield event.plain_result(tr(plugin_instance, "reset_propose_empty"))
         return
 
     save_json(
@@ -36,5 +37,5 @@ async def cmd_reset_propose_cd(plugin_instance, event: AstrMessageEvent):
     )
     logger.info(f"[Wife] reset propose cooldown for group {group_id}, count={reset_count}")
     yield event.plain_result(
-        f"✅ 本群求婚冷却时间已重置！已清除 {reset_count} 条求婚冷却记录。"
+        tr(plugin_instance, "reset_propose_done", count=reset_count)
     )
