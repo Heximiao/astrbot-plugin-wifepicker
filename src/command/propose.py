@@ -4,9 +4,6 @@ from datetime import datetime
 
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent, MessageChain
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-    AiocqhttpMessageEvent,
-)
 
 from ..core import (
     get_force_marry_cooldown_status,
@@ -17,7 +14,7 @@ from ..core import (
 )
 from .forced_marriage import cmd_force_marry
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
-from ..user_profiles import get_display_name
+from ..user_profiles import get_display_name, get_platform_members
 from ..i18n import format_duration, tr
 
 # 群内待处理的求婚请求
@@ -190,17 +187,10 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     now = time.time()
     target_name = get_display_name(plugin_instance, event, target_id)
     try:
-        if event.get_platform_name() == "aiocqhttp" and isinstance(
-            event, AiocqhttpMessageEvent
-        ):
-            members = await event.bot.api.call_action(
-                "get_group_member_list", group_id=int(group_id)
-            )
-            if isinstance(members, dict) and "data" in members:
-                members = members["data"]
-            target_name = resolve_member_name(
-                members, user_id=target_id, fallback=target_name
-            )
+        members = await get_platform_members(plugin_instance, event)
+        target_name = resolve_member_name(
+            members, user_id=target_id, fallback=target_name
+        )
     except Exception:
         pass
 

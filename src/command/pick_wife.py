@@ -6,9 +6,6 @@ from math import ceil
 
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-    AiocqhttpMessageEvent,
-)
 
 from ..core import (
     auto_set_other_half_enabled,
@@ -21,7 +18,7 @@ from ..core import (
     send_onebot_message,
 )
 from ..utils import is_allowed_group, resolve_member_name, save_json
-from ..user_profiles import get_avatar_url, get_display_name
+from ..user_profiles import get_avatar_url, get_display_name, get_platform_members
 from ...waifu_relations import maybe_add_other_half_record
 from ..i18n import tr
 
@@ -229,14 +226,10 @@ async def _draw_candidates(
     current_member_ids: list[str] = []
     members = []
     try:
-        if event.get_platform_name() == "aiocqhttp":
-            assert isinstance(event, AiocqhttpMessageEvent)
-            members = await event.bot.api.call_action(
-                "get_group_member_list", group_id=int(group_id)
-            )
-            if isinstance(members, dict) and isinstance(members.get("data"), list):
-                members = members["data"]
-            current_member_ids = [str(m.get("user_id")) for m in members]
+        members = await get_platform_members(plugin_instance, event)
+        current_member_ids = [
+            str(m.get("user_id")) for m in members if not m.get("is_bot", False)
+        ]
     except Exception:
         members = []
 

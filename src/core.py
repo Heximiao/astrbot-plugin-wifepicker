@@ -281,6 +281,20 @@ def record_active(plugin, event) -> None:
     if not group_id or not is_allowed_group(str(group_id), plugin.config):
         return
 
+    raw_message = getattr(getattr(event, "message_obj", None), "raw_message", None)
+    author = (
+        raw_message.get("author")
+        if isinstance(raw_message, dict)
+        else getattr(raw_message, "author", None)
+    )
+    is_bot_sender = (
+        bool(author.get("bot", False))
+        if isinstance(author, dict)
+        else bool(getattr(author, "bot", False))
+    )
+    if is_bot_sender:
+        return
+
     user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
     if user_id == bot_id or user_id == "0":
         return

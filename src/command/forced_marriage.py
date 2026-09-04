@@ -3,9 +3,6 @@ import time
 
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-    AiocqhttpMessageEvent,
-)
 
 from ..core import (
     auto_set_other_half_enabled,
@@ -20,8 +17,13 @@ from ..core import (
     upsert_user_wife_record,
 )
 from ...waifu_relations import maybe_add_other_half_record
-from ..user_profiles import get_avatar_url, get_display_name
-from ..utils import extract_target_id_from_message, is_allowed_group, resolve_member_name, save_json
+from ..user_profiles import get_avatar_url, get_display_name, get_platform_members
+from ..utils import (
+    extract_target_id_from_message,
+    is_allowed_group,
+    resolve_member_name,
+    save_json,
+)
 from ..i18n import format_duration, tr
 
 
@@ -119,24 +121,13 @@ async def cmd_force_marry(
     )
     members = []
     try:
-        if event.get_platform_name() == "aiocqhttp":
-            assert isinstance(event, AiocqhttpMessageEvent)
-            members = await event.bot.api.call_action(
-                "get_group_member_list", group_id=int(group_id)
-            )
-            if (
-                isinstance(members, dict)
-                and "data" in members
-                and isinstance(members["data"], list)
-            ):
-                members = members["data"]
-
-            target_name = resolve_member_name(
-                members, user_id=target_id, fallback=target_name
-            )
-            user_name = resolve_member_name(
-                members, user_id=user_id, fallback=user_name
-            )
+        members = await get_platform_members(plugin_instance, event)
+        target_name = resolve_member_name(
+            members, user_id=target_id, fallback=target_name
+        )
+        user_name = resolve_member_name(
+            members, user_id=user_id, fallback=user_name
+        )
     except Exception:
         pass
 

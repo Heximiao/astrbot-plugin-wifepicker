@@ -14,7 +14,17 @@
 * **可视化关系**：基于 `Vis.js` 渲染生成高清关系网络图，直观展示群内“错综复杂”的老婆关系。
 * **智能名称识别**：图谱自动关联用户昵称，优先显示群名片而非数字 ID。
 * **QQ 官方机器人兼容**：从官方消息事件缓存昵称和头像，缺失头像时使用 AppID 与 member_openid 获取。
+* **Discord 兼容**：支持 Discord 昵称、头像、成员过滤、标准 @ 消息及英文命令别名。
 * **灵活管控**：支持 **群聊黑白名单**、每人每日抽取次数限制及强娶冷却时间设置。
+
+### Discord 配置
+
+建议在 Discord Developer Portal 为机器人开启 `Server Members Intent` 和
+`Message Content Intent`，以便读取成员昵称、头像和消息内容。成员列表不可用时，
+插件会自动回退到近期发过言的活跃用户池。
+
+可使用 `wife`、`dailywife`、`mywife`、`pickwife`、`propose`、`breakup`、
+`forcemarry`、`relations`、`wifeleaderboard` 和 `wifehelp` 等英文别名。
 
 
 ## 🎮 使用指令

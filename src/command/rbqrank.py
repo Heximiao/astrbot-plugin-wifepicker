@@ -4,7 +4,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from ..core import clean_rbq_stats
-from ..user_profiles import get_avatar_url, get_display_name
+from ..user_profiles import get_avatar_url, get_display_name, get_platform_members
 from ..i18n import tr
 
 
@@ -23,13 +23,12 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
 
     user_map = {}
     try:
-        if event.get_platform_name() == "aiocqhttp":
-            members = await event.bot.api.call_action(
-                "get_group_member_list", group_id=int(group_id)
+        members = await get_platform_members(plugin_instance, event)
+        for member in members:
+            uid = str(member.get("user_id"))
+            user_map[uid] = (
+                member.get("card") or member.get("nickname") or uid
             )
-            for m in members:
-                uid = str(m.get("user_id"))
-                user_map[uid] = m.get("card") or m.get("nickname") or uid
     except Exception:
         pass
 

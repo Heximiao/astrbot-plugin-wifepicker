@@ -5,7 +5,12 @@ from astrbot.api.event import AstrMessageEvent
 
 from ..core import get_group_records
 from ..utils import is_allowed_group
-from ..user_profiles import get_avatar_url, get_display_name
+from ..user_profiles import (
+    get_avatar_url,
+    get_display_name,
+    get_platform_group_name,
+    get_platform_members,
+)
 
 
 async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
@@ -43,38 +48,15 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
     user_map = {}
     avatar_map = {}
     try:
-        if event.get_platform_name() == "aiocqhttp":
-            # 获取群信息
-            info = await event.bot.api.call_action(
-                "get_group_info", group_id=int(group_id)
-            )
-            if (
-                isinstance(info, dict)
-                and "data" in info
-                and isinstance(info["data"], dict)
-            ):
-                info = info["data"]
-            group_name = info.get("group_name", "未命名群聊")
-
-            # 获取群成员列表构建映射
-            members = await event.bot.api.call_action(
-                "get_group_member_list", group_id=int(group_id)
-            )
-            if (
-                isinstance(members, dict)
-                and "data" in members
-                and isinstance(members["data"], list)
-            ):
-                members = members["data"]
-
-            if isinstance(members, list):
-                for m in members:
-                    uid = str(m.get("user_id"))
-                    name = m.get("card") or m.get("nickname") or uid
-                    user_map[uid] = name
+        group_name = await get_platform_group_name(event, group_name)
+        members = await get_platform_members(plugin_instance, event)
+        for member in members:
+            uid = str(member.get("user_id"))
+            name = member.get("card") or member.get("nickname") or uid
+            user_map[uid] = name
 
     except Exception as e:
-        logger.warning(f"获取群信息失败: {e}")
+        logger.warning(f"获取群组或成员信息失败: {e}")
 
     # 3. 渲染图片
     # 根据节点数量动态计算高度，避免拥挤

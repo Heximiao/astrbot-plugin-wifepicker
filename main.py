@@ -8,9 +8,6 @@ import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-    AiocqhttpMessageEvent,
-)
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .keyword_trigger import KeywordRouter, MatchMode
@@ -27,7 +24,8 @@ from .src.command.reset_propose_cd import cmd_reset_propose_cd
 from .src.user_profiles import (
     get_avatar_url,
     get_display_name,
-    remember_official_profile,
+    get_platform_members,
+    remember_user_profile,
 )
 
 from .src.constants import _DEFAULT_KEYWORD_ROUTES
@@ -193,7 +191,7 @@ class RandomWifePlugin(Star):
                 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
-        remember_official_profile(self, event)
+        remember_user_profile(self, event)
         record_active(self, event)
         # 在这里触发挑选回复检查钩子，因为它能捕获所有群内纯文本
         if not event.is_private_chat():
@@ -204,7 +202,7 @@ class RandomWifePlugin(Star):
             async for result in handle_propose_response(self, event):
                 yield result
 
-    @filter.command("今日老婆", alias={"抽老婆", "jrlp"})
+    @filter.command("今日老婆", alias={"抽老婆", "jrlp", "dailywife", "wife"})
     async def draw_wife(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_draw_wife(event):
@@ -292,18 +290,11 @@ class RandomWifePlugin(Star):
         current_member_ids: list[str] = []
         members = []
         try:
-            if event.get_platform_name() == "aiocqhttp":
-                assert isinstance(event, AiocqhttpMessageEvent)
-                members = await event.bot.api.call_action(
-                    "get_group_member_list", group_id=int(group_id)
-                )
-                if (
-                    isinstance(members, dict)
-                    and "data" in members
-                    and isinstance(members["data"], list)
-                ):
-                    members = members["data"]
-                current_member_ids = [str(m.get("user_id")) for m in members]
+            members = await get_platform_members(self, event)
+            current_member_ids = [
+                str(m.get("user_id")) for m in members if not m.get("is_bot", False)
+            ]
+            if current_member_ids:
                 debug_log(
                     self,
                     "draw",
@@ -364,16 +355,12 @@ class RandomWifePlugin(Star):
             self, event, user_id, fallback=event.get_sender_name() or f"用户({user_id})"
         )
 
-        try:
-            if event.get_platform_name() == "aiocqhttp":
-                wife_name = resolve_member_name(
-                    members, user_id=wife_id, fallback=wife_name
-                )
-                user_name = resolve_member_name(
-                    members, user_id=user_id, fallback=user_name
-                )
-        except Exception:
-            pass
+        wife_name = resolve_member_name(
+            members, user_id=wife_id, fallback=wife_name
+        )
+        user_name = resolve_member_name(
+            members, user_id=user_id, fallback=user_name
+        )
 
         timestamp = datetime.now().isoformat()
         debug_log(self, "draw", f"selected group={group_id} user={user_id} wife={wife_id}")
@@ -443,7 +430,7 @@ class RandomWifePlugin(Star):
         chain.append(Comp.Plain(suffix_text))
         yield event.chain_result(chain)
 
-    @filter.command("我的老婆", alias={"抽取历史", "wdlp"})
+    @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_show_history(event):
@@ -453,7 +440,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_show_history(self, event):
             yield result
 
-    @filter.command("分手", alias={"fs"})
+    @filter.command("分手", alias={"fs", "breakup"})
     async def breakup(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_breakup(event):
@@ -463,7 +450,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_breakup(self, event):
             yield result
 
-    @filter.command("强娶", alias={"qiangqu"})
+    @filter.command("强娶", alias={"qiangqu", "forcemarry"})
     async def force_marry(self, event: AstrMessageEvent):
         """强娶 + @要娶的那个人"""
         event.stop_event()
@@ -474,7 +461,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_force_marry(self, event):
             yield result
 
-    @filter.command("关系图", alias={"gxt"})
+    @filter.command("关系图", alias={"gxt", "relations"})
     async def show_graph(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_show_graph(self, event):
@@ -484,7 +471,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_show_graph(self, event):
             yield result
 
-    @filter.command("rbq排行", alias={"rbqph"})
+    @filter.command("rbq排行", alias={"rbqph", "wifeleaderboard"})
     async def rbq_ranking(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_rbq_ranking(self, event):
@@ -539,7 +526,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_reset_propose_cd(self, event):
             yield result
 
-    @filter.command("抽老婆帮助", alias={"老婆插件帮助", "clpbz"})
+    @filter.command("抽老婆帮助", alias={"老婆插件帮助", "clpbz", "wifehelp"})
     async def show_help(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_show_help(self, event):
@@ -559,14 +546,14 @@ class RandomWifePlugin(Star):
         async for result in run_debug_graph(self, event):
             yield result
         
-    @filter.command("求婚", alias={"qh"})
+    @filter.command("求婚", alias={"qh", "propose"})
     async def propose_command(self, event: AstrMessageEvent):
         event.stop_event()
         # 调用外部的发起求婚逻辑
         async for result in cmd_propose(self, event):
             yield result
 
-    @filter.command("挑选老婆", alias={"txlp"})
+    @filter.command("挑选老婆", alias={"txlp", "pickwife"})
     async def pick_wife(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_pick_wife(event):
