@@ -1,9 +1,11 @@
+import asyncio
 import hashlib
 import time
 from typing import Any
 from urllib.parse import quote
 
-from .utils import save_json
+from ..utils import save_json
+from .telegram_support import is_telegram_event
 
 
 QQ_OFFICIAL_PLATFORMS = frozenset({"qq_official", "qq_official_webhook"})
@@ -122,6 +124,11 @@ def _remember_profile(
 
 def remember_user_profile(plugin, event) -> None:
     """Cache sender metadata supplied by QQ Official and Discord events."""
+    if is_telegram_event(event) and not event.is_private_chat():
+        from .telegram_support import remember_event
+
+        remember_event(plugin, event)
+        return
     if event.is_private_chat() or not (
         is_qq_official_event(event) or is_discord_event(event)
     ):
@@ -180,6 +187,10 @@ async def get_platform_members(plugin, event) -> list[dict]:
     group_id = str(event.get_group_id() or "")
     if not group_id:
         return []
+    if is_telegram_event(event):
+        from .telegram_support import get_members
+
+        return await get_members(plugin, event)
     if platform == "aiocqhttp":
         members = await event.bot.api.call_action(
             "get_group_member_list", group_id=int(group_id)
@@ -236,6 +247,11 @@ async def get_platform_group_name(event, fallback: str = "未命名群聊") -> s
     platform = _platform_name(event)
     group_id = str(event.get_group_id() or "")
     try:
+        if is_telegram_event(event):
+            from .telegram_support import telegram_message, value
+
+            chat = value(telegram_message(event), "chat")
+            return str(value(chat, "title") or fallback)
         if platform == "aiocqhttp":
             info = await event.bot.api.call_action(
                 "get_group_info", group_id=int(group_id)
@@ -263,7 +279,7 @@ async def get_platform_group_name(event, fallback: str = "未命名群聊") -> s
 
 def get_display_name(plugin, event, user_id: str, fallback: str | None = None) -> str:
     user_id = str(user_id)
-    if is_qq_official_event(event) or is_discord_event(event):
+    if is_qq_official_event(event) or is_discord_event(event) or is_telegram_event(event):
         nickname = _valid_name(
             _group_profiles(plugin, event).get(user_id, {}).get("nickname"), user_id
         )
@@ -283,6 +299,8 @@ def get_avatar_url(plugin, event, user_id: str, size: int = 640) -> str | None:
     user_id = str(user_id or "").strip()
     if not user_id:
         return None
+    if is_telegram_event(event):
+        return None
     profile = _group_profiles(plugin, event).get(user_id, {})
     avatar_url = str(profile.get("avatar_url", "") or "").strip()
     if avatar_url.startswith(("https://", "http://")):
@@ -298,3 +316,62 @@ def get_avatar_url(plugin, event, user_id: str, size: int = 640) -> str | None:
         "https://thirdqq.qlogo.cn/qqapp/"
         f"{quote(appid, safe='')}/{quote(user_id, safe='')}/640"
     )
+
+
+async def get_avatar_source(plugin, event, user_id: str, size: int = 640) -> str | None:
+    if is_telegram_event(event):
+        from .telegram_support import avatar_source
+
+        return await avatar_source(plugin, event, user_id)
+    return get_avatar_url(plugin, event, user_id, size)
+
+
+async def get_avatar_sources(plugin, event, user_ids) -> dict:
+    """Prepare chart avatars without waiting five seconds for every missing photo."""
+    if not is_telegram_event(event):
+        return {uid: get_avatar_url(plugin, event, uid) for uid in user_ids}
+    result = {}
+    semaphore = asyncio.Semaphore(6)
+
+    async def load(uid):
+        async with semaphore:
+            result[uid] = await get_avatar_source(plugin, event, uid)
+
+    try:
+        await asyncio.wait_for(asyncio.gather(*(load(uid) for uid in user_ids)), timeout=10)
+    except asyncio.TimeoutError:
+        pass
+    return result
+
+
+def avatar_image(source: str):
+    import astrbot.api.message_components as Comp
+
+    if source.startswith("data:image/"):
+        return Comp.Image.fromBase64(source.split(",", 1)[1])
+    return Comp.Image.fromURL(source)
+
+
+def mention_user(plugin, event, user_id: str):
+    import astrbot.api.message_components as Comp
+
+    if is_telegram_event(event):
+        from .telegram_support import mention
+
+        return mention(plugin, event, user_id)
+    return Comp.At(qq=user_id)
+
+
+def platform_chain(event, chain):
+    """Telegram sends each Plain separately; keep mentions and result text together."""
+    if not is_telegram_event(event):
+        return chain
+    import astrbot.api.message_components as Comp
+
+    merged = []
+    for item in chain:
+        if isinstance(item, Comp.Plain) and merged and isinstance(merged[-1], Comp.Plain):
+            merged[-1] = Comp.Plain(merged[-1].text + item.text)
+        else:
+            merged.append(item)
+    return merged

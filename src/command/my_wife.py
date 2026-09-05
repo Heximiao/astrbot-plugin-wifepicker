@@ -3,7 +3,7 @@ from datetime import datetime
 from astrbot.api.event import AstrMessageEvent
 
 from ..utils import is_allowed_group
-from ..user_profiles import get_display_name
+from ..platforms.user_profiles import get_display_name
 from ..i18n import tr
 
 

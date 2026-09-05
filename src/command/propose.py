@@ -14,7 +14,7 @@ from ..core import (
 )
 from .forced_marriage import cmd_force_marry
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
-from ..user_profiles import get_display_name, get_platform_members
+from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_chain
 from ..i18n import format_duration, tr
 
 # 群内待处理的求婚请求
@@ -145,7 +145,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
 
     user_id = str(event.get_sender_id())
     group_id = str(event.get_group_id())
-    target_id = extract_target_id_from_message(event)
+    target_id = extract_target_id_from_message(event, plugin_instance)
 
     if not target_id or target_id == "all":
         yield event.plain_result(tr(plugin_instance, "propose_need_target"))
@@ -230,10 +230,11 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
         if req["proposer_id"] == user_id:
             chain_obj = MessageChain()
             chain_obj.chain = [
-                Comp.At(qq=user_id),
+                mention_user(plugin_instance, event, user_id),
                 Comp.Plain(text=tr(plugin_instance, "propose_timeout")),
             ]
 
+            chain_obj.chain = platform_chain(event, chain_obj.chain)
             try:
                 await plugin_instance.context.send_message(req["umo"], chain_obj)
             except Exception as e:
@@ -366,9 +367,9 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
 
             event.stop_event()
             chain = [
-                Comp.At(qq=proposer_id),
+                mention_user(plugin_instance, event, proposer_id),
                 Comp.Plain(
                     tr(plugin_instance, "propose_rejected", target_name=target_name)
                 ),
             ]
-            yield event.chain_result(chain)
+            yield event.chain_result(platform_chain(event, chain))

@@ -4,6 +4,8 @@ import time
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
 
+from ..platforms.user_profiles import mention_user, avatar_image, platform_chain
+from ..platforms.telegram_support import self_user_id
 from ..core import (
     auto_set_other_half_enabled,
     can_onebot_withdraw,
@@ -17,7 +19,7 @@ from ..core import (
     upsert_user_wife_record,
 )
 from ...waifu_relations import maybe_add_other_half_record
-from ..user_profiles import get_avatar_url, get_display_name, get_platform_members
+from ..platforms.user_profiles import get_avatar_source, get_display_name, get_platform_members
 from ..utils import (
     extract_target_id_from_message,
     is_allowed_group,
@@ -52,7 +54,7 @@ async def cmd_force_marry(
         return
 
     user_id = str(event.get_sender_id())
-    bot_id = str(event.get_self_id())
+    bot_id = self_user_id(event)
     group_id = str(event.get_group_id())
     if not is_allowed_group(group_id, plugin_instance.config):
         return
@@ -83,7 +85,7 @@ async def cmd_force_marry(
     target_id = (
         str(target_id_override)
         if target_id_override
-        else extract_target_id_from_message(event)
+        else extract_target_id_from_message(event, plugin_instance)
     )
 
     if not target_id or target_id == "all":
@@ -167,7 +169,7 @@ async def cmd_force_marry(
     save_json(plugin_instance.records_file, plugin_instance.records)
     save_json(plugin_instance.forced_file, plugin_instance.forced_records)
 
-    avatar_url = get_avatar_url(plugin_instance, event, target_id)
+    avatar_url = await get_avatar_source(plugin_instance, event, target_id)
     result_text = tr(plugin_instance, "force_success", target_name=target_name)
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
@@ -186,9 +188,9 @@ async def cmd_force_marry(
         return
 
     chain = [
-        Comp.At(qq=user_id),
+        mention_user(plugin_instance, event, user_id),
         Comp.Plain(result_text),
     ]
     if avatar_url:
-        chain.append(Comp.Image.fromURL(avatar_url))
-    yield event.chain_result(chain)
+        chain.append(avatar_image(avatar_url))
+    yield event.chain_result(platform_chain(event, chain))

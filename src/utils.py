@@ -58,7 +58,11 @@ def normalize_user_id_set(values: object) -> set[str]:
     return {str(v) for v in values if str(v).strip()}
 
 
-def extract_target_id_from_message(event: AstrMessageEvent) -> str | None:
+def extract_target_id_from_message(event: AstrMessageEvent, plugin=None) -> str | None:
+    from .platforms.telegram_support import is_telegram_event, resolve_target
+
+    if is_telegram_event(event):
+        return resolve_target(plugin, event) if plugin is not None else None
     self_id = str(event.get_self_id() or "")
     mentions: list[str] = []
 

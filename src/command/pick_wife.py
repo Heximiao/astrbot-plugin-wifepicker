@@ -7,6 +7,8 @@ from math import ceil
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
 
+from ..platforms.user_profiles import mention_user, avatar_image, platform_chain
+from ..platforms.telegram_support import is_telegram_event, self_user_id
 from ..core import (
     auto_set_other_half_enabled,
     can_onebot_withdraw,
@@ -18,7 +20,7 @@ from ..core import (
     send_onebot_message,
 )
 from ..utils import is_allowed_group, resolve_member_name, save_json
-from ..user_profiles import get_avatar_url, get_display_name, get_platform_members
+from ..platforms.user_profiles import get_avatar_source, get_display_name, get_platform_members
 from ...waifu_relations import maybe_add_other_half_record
 from ..i18n import tr
 
@@ -233,7 +235,7 @@ async def _draw_candidates(
     except Exception:
         members = []
 
-    bot_id = str(event.get_self_id())
+    bot_id = self_user_id(event)
     active_pool = plugin_instance.active_users.get(group_id, {})
     if not isinstance(active_pool, dict):
         active_pool = {}
@@ -243,7 +245,7 @@ async def _draw_candidates(
         excluded.add(bot_id)
     excluded.update([user_id, "0"])
 
-    if current_member_ids:
+    if current_member_ids or is_telegram_event(event):
         pool = [
             uid
             for uid in active_pool.keys()
@@ -293,14 +295,14 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     cooldown_remaining = _get_pick_cooldown_remaining(
         plugin_instance, group_id, user_id
     )
-    if cooldown_remaining > 0:
-        if _pick_cooldown_started_today(plugin_instance, group_id, user_id):
-            yield event.plain_result(tr(plugin_instance, "pick_already_done"))
-        else:
-            remaining_minutes = max(1, ceil(cooldown_remaining / 60))
-            yield event.plain_result(
-                tr(plugin_instance, "pick_cooldown", minutes=remaining_minutes)
-            )
+    # 当天的后续批次由每日额度控制，避免放弃或超时后被首批冷却拦住。
+    if cooldown_remaining > 0 and not _pick_cooldown_started_today(
+        plugin_instance, group_id, user_id
+    ):
+        remaining_minutes = max(1, ceil(cooldown_remaining / 60))
+        yield event.plain_result(
+            tr(plugin_instance, "pick_cooldown", minutes=remaining_minutes)
+        )
         return
 
     retry_limit = _get_retry_limit(plugin_instance)
@@ -345,7 +347,7 @@ async def _send_pick_confirmation(
     plugin_instance, event: AstrMessageEvent, user_id: str, wife_id: str, wife_name: str
 ):
     """发送挑选确认结果（含所选老婆头像）。"""
-    avatar_url = get_avatar_url(plugin_instance, event, wife_id)
+    avatar_url = await get_avatar_source(plugin_instance, event, wife_id)
     text = tr(plugin_instance, "pick_success", wife_name=wife_name)
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
@@ -362,12 +364,12 @@ async def _send_pick_confirmation(
         return
 
     chain = [
-        Comp.At(qq=user_id),
+        mention_user(plugin_instance, event, user_id),
         Comp.Plain(text),
     ]
     if avatar_url:
-        chain.append(Comp.Image.fromURL(avatar_url))
-    yield event.chain_result(chain)
+        chain.append(avatar_image(avatar_url))
+    yield event.chain_result(platform_chain(event, chain))
 
 
 # 处理挑选期间的回复（人话：等着看你回数字/重新挑选/放弃）
@@ -421,7 +423,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         yield event.plain_result(_format_candidate_list(plugin_instance, new_req))
         return
 
-    # 用户放弃挑选，把名额还回去（人话：这婚不结了，下次再说）
+    # 放弃仅结束当前请求，不退还已经展示的候选批次。
     if msg in ABANDON_KEYWORDS:
         used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
         _delete_request(group_id, user_id)

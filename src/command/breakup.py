@@ -4,7 +4,7 @@ from datetime import datetime
 from astrbot.api.event import AstrMessageEvent
 
 from ..core import get_group_records
-from ..user_profiles import get_display_name
+from ..platforms.user_profiles import get_display_name
 from ..utils import is_allowed_group, save_json
 from ..i18n import format_duration, tr
 

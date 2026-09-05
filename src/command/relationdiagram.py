@@ -5,8 +5,8 @@ from astrbot.api.event import AstrMessageEvent
 
 from ..core import get_group_records
 from ..utils import is_allowed_group
-from ..user_profiles import (
-    get_avatar_url,
+from ..platforms.user_profiles import (
+    get_avatar_sources,
     get_display_name,
     get_platform_group_name,
     get_platform_members,
@@ -65,9 +65,10 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
     for r in group_data:
         unique_nodes.add(str(r.get("user_id")))
         unique_nodes.add(str(r.get("wife_id")))
+    avatars = await get_avatar_sources(plugin_instance, event, unique_nodes)
     for uid in unique_nodes:
         user_map.setdefault(uid, get_display_name(plugin_instance, event, uid))
-        avatar_url = get_avatar_url(plugin_instance, event, uid)
+        avatar_url = avatars.get(uid)
         if avatar_url:
             avatar_map[uid] = avatar_url
     node_count = len(unique_nodes)

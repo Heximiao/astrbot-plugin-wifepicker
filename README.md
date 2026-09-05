@@ -14,7 +14,7 @@
 * **可视化关系**：基于 `Vis.js` 渲染生成高清关系网络图，直观展示群内“错综复杂”的老婆关系。
 * **智能名称识别**：图谱自动关联用户昵称，优先显示群名片而非数字 ID。
 * **QQ 官方机器人兼容**：从官方消息事件缓存昵称和头像，缺失头像时使用 AppID 与 member_openid 获取。
-* **Discord 兼容**：支持 Discord 昵称、头像、成员过滤、标准 @ 消息及英文命令别名。
+
 * **灵活管控**：支持 **群聊黑白名单**、每人每日抽取次数限制及强娶冷却时间设置。
 
 ### Discord 配置
@@ -26,6 +26,17 @@
 可使用 `wife`、`dailywife`、`mywife`、`pickwife`、`propose`、`breakup`、
 `forcemarry`、`relations`、`wifeleaderboard` 和 `wifehelp` 等英文别名。
 
+
+### Telegram 配置
+
+在 AstrBot 中连接 Telegram 机器人后，将机器人加入群聊。建议设为群管理员：这样既能收到普通群消息、记录活跃用户，也能可靠查询成员是否仍在群内。若不设为管理员，需要在 BotFather 中关闭隐私模式；成员查询不可用时会使用已知活跃用户，无法保证及时排除退群用户。
+
+* 使用 `/wife`、`/pickwife`、`/mywife`、`/propose`、`/forcemarry`、`/breakup`、`/relations`、`/wifeleaderboard`、`/wifehelp` 等现有英文别名。
+* 求婚或强娶可以**回复对方的消息**后发送 `/propose` 或 `/forcemarry`。也可使用 `@username`，但插件必须已从该用户的消息中记录过用户名；没有用户名的群友可使用回复方式。
+* 挑选仍在 30 秒内回复编号，`reselect` 换一批，`give up` 放弃；求婚使用 `accept` / `reject`，拒绝后用 `yes` / `no` 确认是否强娶。次数、候选批次、冷却和关系规则与其他平台共用。
+* Telegram 无法一次获取全体群成员，候选来自机器人收到过消息的近期活跃用户。匿名管理员和以频道身份发送的消息不计入个人活跃池。
+* 头像保存在插件数据目录的 `telegram_avatars`，获取失败时仍可正常使用文字结果和关系图。话题群按 AstrBot 提供的 `群ID#话题ID` 隔离记录，群黑白名单也使用这一完整 ID。
+* 现有定时撤回功能仍仅适用于 OneBot；本次适配不更改其适用范围。
 
 ## 🎮 使用指令
 
@@ -108,7 +119,6 @@
 astrbot-plugin-wifepicker/
 ├── main.py                    # 插件入口、AstrBot 指令注册、关键词触发调度
 ├── keyword_trigger.py         # 无前缀关键词触发匹配器
-├── onebot_api.py              # OneBot 消息撤回等平台能力封装
 ├── waifu_relations.py         # 自动设置对方老婆等关系记录辅助逻辑
 ├── _conf_schema.json          # AstrBot 管理面板配置项
 ├── metadata.yaml              # 插件元信息
@@ -118,7 +128,11 @@ astrbot-plugin-wifepicker/
 │   ├── constants.py           # 默认关键词路由表
 │   ├── core.py                # 抽取、记录、冷却、清理等核心逻辑
 │   ├── utils.py               # @ 目标解析、成员名解析、JSON 读写等工具函数
-│   ├── user_profiles.py       # 用户昵称、头像与官方资料缓存
+│   ├── platforms/            # 平台兼容层
+│   │   ├── __init__.py
+│   │   ├── user_profiles.py  # 统一资料入口与 QQ、Discord 适配
+│   │   ├── telegram_support.py # Telegram 用户识别、成员与头像适配
+│   │   └── onebot_api.py     # OneBot API 响应解析
 │   ├── debug.py               # 调试日志入口
 │   ├── debug_utils.py         # 关系图调试数据生成工具
 │   └── command/

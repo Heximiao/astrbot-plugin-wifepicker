@@ -7,3 +7,4 @@ repo: https://github.com/Heximiao/astrbot-plugin-wifepicker
 support_platforms:
   - aiocqhttp
   - discord
+  - telegram

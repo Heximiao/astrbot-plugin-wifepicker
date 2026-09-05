@@ -10,6 +10,8 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
+from .src.platforms.user_profiles import mention_user, avatar_image, platform_chain
+from .src.platforms.telegram_support import is_telegram_event, self_user_id
 from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
 from .src.command.help import cmd_show_help
@@ -21,8 +23,8 @@ from .src.command.propose import cmd_propose, handle_propose_response
 from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
 from .src.command.reset_propose_cd import cmd_reset_propose_cd
-from .src.user_profiles import (
-    get_avatar_url,
+from .src.platforms.user_profiles import (
+    get_avatar_source,
     get_display_name,
     get_platform_members,
     remember_user_profile,
@@ -227,7 +229,7 @@ class RandomWifePlugin(Star):
             debug_log(self, "draw", f"skip disallowed group={group_id}")
             return
 
-        user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
+        user_id, bot_id = str(event.get_sender_id()), self_user_id(event)
         cleanup_inactive(self, group_id)
 
         daily_limit = self.config.get("daily_limit", 1)
@@ -246,7 +248,7 @@ class RandomWifePlugin(Star):
                 wife_record = user_recs[0]
                 wife_name, wife_id = wife_record["wife_name"], wife_record["wife_id"]
                 wife_name = get_display_name(self, event, wife_id, fallback=wife_name)
-                wife_avatar = get_avatar_url(self, event, wife_id)
+                wife_avatar = await get_avatar_source(self, event, wife_id)
                 if can_onebot_withdraw(self, event):
                     message_id = await send_onebot_message(
                         self,
@@ -267,12 +269,12 @@ class RandomWifePlugin(Star):
                     return
 
                 chain = [
-                    Comp.At(qq=user_id),
+                    mention_user(self, event, user_id),
                     Comp.Plain(tr(self, "wife_existing", wife_name=wife_name)),
                 ]
                 if wife_avatar:
-                    chain.append(Comp.Image.fromURL(wife_avatar))
-                yield event.chain_result(chain)
+                    chain.append(avatar_image(wife_avatar))
+                yield event.chain_result(platform_chain(event, chain))
             else:
                 text = tr(self, "daily_limit", count=today_count)
                 if can_onebot_withdraw(self, event):
@@ -311,7 +313,7 @@ class RandomWifePlugin(Star):
         excluded.update([user_id, "0"])
 
         # 核心逻辑：如果在 aiocqhttp 平台，只从【当前还在群里】的人中抽取
-        if current_member_ids:
+        if current_member_ids or is_telegram_event(event):
             pool = [
                 uid
                 for uid in active_pool.keys()
@@ -385,7 +387,7 @@ class RandomWifePlugin(Star):
 
         save_json(self.records_file, self.records, self.records_file, self.config)
 
-        avatar_url = get_avatar_url(self, event, wife_id)
+        avatar_url = await get_avatar_source(self, event, wife_id)
         suffix_text = tr(
             self,
             "draw_suffix",
@@ -418,17 +420,17 @@ class RandomWifePlugin(Star):
 
         # --- AstrBot 标准路径改动 ---
         chain = [
-            Comp.At(qq=user_id),
+            mention_user(self, event, user_id),
             Comp.Plain(result_text),
         ]
         
         if at_waifu_enabled:
-            chain.append(Comp.At(qq=wife_id))
+            chain.append(mention_user(self, event, wife_id))
         
         if avatar_url:
-            chain.append(Comp.Image.fromURL(avatar_url))
+            chain.append(avatar_image(avatar_url))
         chain.append(Comp.Plain(suffix_text))
-        yield event.chain_result(chain)
+        yield event.chain_result(platform_chain(event, chain))
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):

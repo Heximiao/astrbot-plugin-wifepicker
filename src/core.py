@@ -10,7 +10,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
 
-from ..onebot_api import extract_message_id
+from .platforms.onebot_api import extract_message_id
 from .debug import debug_log
 from .utils import (
     save_json,
@@ -280,6 +280,14 @@ def record_active(plugin, event) -> None:
     group_id = event.get_group_id()
     if not group_id or not is_allowed_group(str(group_id), plugin.config):
         return
+
+    from .platforms.telegram_support import is_telegram_event, telegram_message, value
+
+    if is_telegram_event(event):
+        msg = telegram_message(event)
+        author = value(msg, "from_user") or value(msg, "from")
+        if value(msg, "sender_chat") or value(author, "is_bot", False):
+            return
 
     raw_message = getattr(getattr(event, "message_obj", None), "raw_message", None)
     author = (
