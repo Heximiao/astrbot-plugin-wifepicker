@@ -16,6 +16,19 @@
 * **QQ 官方机器人兼容**：从官方消息事件缓存昵称和头像，缺失头像时使用 AppID 与 member_openid 获取。
 * **灵活管控**：支持 **群聊黑白名单**、每人每日抽取次数限制及强娶冷却时间设置。
 
+### Discord 配置
+
+建议在 Discord Developer Portal 为机器人开启 `Server Members Intent` 和
+`Message Content Intent`，以便读取成员昵称、头像和消息内容。成员列表不可用时，
+插件会自动回退到近期发过言的活跃用户池。
+
+可使用 `wife`、`dailywife`、`mywife`、`pickwife`、`propose`、`breakup`、
+`forcemarry`、`relations`、`wifeleaderboard` 和 `wifehelp` 等英文别名。
+
+
+### Telegram 配置
+
+在 AstrBot 中连接 Telegram 机器人后，将机器人加入群聊。建议设为群管理员：这样既能收到普通群消息、记录活跃用户，也能可靠查询成员是否仍在群内。若不设为管理员，需要在 BotFather 中关闭隐私模式；成员查询不可用时会使用已知活跃用户，无法保证及时排除退群用户。
 
 ## 🎮 使用指令
 
@@ -66,6 +79,7 @@
 
 | 配置键 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
+| `language` | string | `zh-CN` | 聊天回复语言，可选简体中文、English、日本語 |
 | `daily_limit` | int | 1 | 每人每天可抽取的次数上限 |
 | `force_marry_cd` | int | 3 | 强娶后的冷却天数 |
 | `propose_cooldown_minutes` | int | 60 | 求婚成功后双方的冷却分钟数，设为 0 可关闭 |
@@ -97,7 +111,6 @@
 astrbot-plugin-wifepicker/
 ├── main.py                    # 插件入口、AstrBot 指令注册、关键词触发调度
 ├── keyword_trigger.py         # 无前缀关键词触发匹配器
-├── onebot_api.py              # OneBot 消息撤回等平台能力封装
 ├── waifu_relations.py         # 自动设置对方老婆等关系记录辅助逻辑
 ├── _conf_schema.json          # AstrBot 管理面板配置项
 ├── metadata.yaml              # 插件元信息
@@ -107,7 +120,11 @@ astrbot-plugin-wifepicker/
 │   ├── constants.py           # 默认关键词路由表
 │   ├── core.py                # 抽取、记录、冷却、清理等核心逻辑
 │   ├── utils.py               # @ 目标解析、成员名解析、JSON 读写等工具函数
-│   ├── user_profiles.py       # 用户昵称、头像与官方资料缓存
+│   ├── platforms/            # 平台兼容层
+│   │   ├── __init__.py
+│   │   ├── user_profiles.py  # 统一资料入口与 QQ、Discord 适配
+│   │   ├── telegram_support.py # Telegram 用户识别、成员与头像适配
+│   │   └── onebot_api.py     # OneBot API 响应解析
 │   ├── debug.py               # 调试日志入口
 │   ├── debug_utils.py         # 关系图调试数据生成工具
 │   └── command/

@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "display_name": "Wife of the Day",
+    "short_desc": "Draw an active group member as your wife of the day.",
+    "desc": "A group-chat game that draws active members as wives of the day, with picking, proposals, forced marriage, rankings, and relationship graphs."
+  },
+  "config": {
+    "language": {
+      "description": "Reply language",
+      "hint": "Choose the language used by the plugin's chat replies.",
+      "labels": ["Simplified Chinese", "English", "Japanese"]
+    }
+  }
+}

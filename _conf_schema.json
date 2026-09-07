@@ -1,4 +1,20 @@
 {
+    "language": {
+        "type": "string",
+        "description": "回复语言",
+        "hint": "设置插件在聊天中发送回复时使用的语言。",
+        "options": [
+            "zh-CN",
+            "en-US",
+            "ja-JP"
+        ],
+        "labels": [
+            "简体中文",
+            "English",
+            "日本語"
+        ],
+        "default": "zh-CN"
+    },
     "daily_limit": {
         "type": "int",
         "description": "每日抽取上限",

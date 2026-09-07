@@ -10,7 +10,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
 
-from ..onebot_api import extract_message_id
+from .platforms.onebot_api import extract_message_id
 from .debug import debug_log
 from .utils import (
     save_json,
@@ -279,6 +279,28 @@ def schedule_onebot_delete_msg(plugin, client, *, message_id: object) -> None:
 def record_active(plugin, event) -> None:
     group_id = event.get_group_id()
     if not group_id or not is_allowed_group(str(group_id), plugin.config):
+        return
+
+    from .platforms.telegram_support import is_telegram_event, telegram_message, value
+
+    if is_telegram_event(event):
+        msg = telegram_message(event)
+        author = value(msg, "from_user") or value(msg, "from")
+        if value(msg, "sender_chat") or value(author, "is_bot", False):
+            return
+
+    raw_message = getattr(getattr(event, "message_obj", None), "raw_message", None)
+    author = (
+        raw_message.get("author")
+        if isinstance(raw_message, dict)
+        else getattr(raw_message, "author", None)
+    )
+    is_bot_sender = (
+        bool(author.get("bot", False))
+        if isinstance(author, dict)
+        else bool(getattr(author, "bot", False))
+    )
+    if is_bot_sender:
         return
 
     user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())

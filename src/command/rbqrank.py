@@ -4,12 +4,13 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from ..core import clean_rbq_stats
-from ..user_profiles import get_avatar_url, get_display_name
+from ..platforms.user_profiles import get_avatar_sources, get_display_name, get_platform_members
+from ..i18n import tr
 
 
 async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
     if event.is_private_chat():
-        yield event.plain_result("私聊看不了榜单哦~")
+        yield event.plain_result(tr(plugin_instance, "ranking_private"))
         return
 
     group_id = str(event.get_group_id())
@@ -17,18 +18,17 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
 
     group_data = plugin_instance.rbq_stats.get(group_id, {})
     if not group_data:
-        yield event.plain_result("本群近30天还没有人被强娶过，大家都很有礼貌呢。")
+        yield event.plain_result(tr(plugin_instance, "ranking_empty"))
         return
 
     user_map = {}
     try:
-        if event.get_platform_name() == "aiocqhttp":
-            members = await event.bot.api.call_action(
-                "get_group_member_list", group_id=int(group_id)
+        members = await get_platform_members(plugin_instance, event)
+        for member in members:
+            uid = str(member.get("user_id"))
+            user_map[uid] = (
+                member.get("card") or member.get("nickname") or uid
             )
-            for m in members:
-                uid = str(m.get("user_id"))
-                user_map[uid] = m.get("card") or m.get("nickname") or uid
     except Exception:
         pass
 
@@ -40,13 +40,16 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
                 "name": user_map.get(
                     uid, get_display_name(plugin_instance, event, uid)
                 ),
-                "avatar_url": get_avatar_url(plugin_instance, event, uid),
+                "avatar_url": None,
                 "count": len(ts_list),
             }
         )
 
     sorted_list.sort(key=lambda x: x["count"], reverse=True)
     top_10 = sorted_list[:10]
+    avatars = await get_avatar_sources(plugin_instance, event, [user["uid"] for user in top_10])
+    for user in top_10:
+        user["avatar_url"] = avatars.get(user["uid"])
 
     current_rank = 1
     for i, user in enumerate(top_10):
@@ -58,7 +61,7 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
         plugin_instance.curr_dir, "template", "rbq_ranking.html"
     )
     if not os.path.exists(template_path):
-        yield event.plain_result("错误：找不到排行模板 rbq_ranking.html")
+        yield event.plain_result(tr(plugin_instance, "ranking_template_missing"))
         return
 
     with open(template_path, "r", encoding="utf-8") as f:
@@ -76,7 +79,7 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
             {
                 "group_id": group_id,
                 "ranking": top_10,
-                "title": "❤️ 群rbq月榜 ❤️",
+                "title": tr(plugin_instance, "ranking_title"),
             },
             options={
                 "type": "png",

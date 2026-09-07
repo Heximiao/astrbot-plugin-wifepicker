@@ -8,11 +8,10 @@ import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-    AiocqhttpMessageEvent,
-)
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
+from .src.platforms.user_profiles import mention_user, avatar_image, platform_chain
+from .src.platforms.telegram_support import is_telegram_event, self_user_id
 from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
 from .src.command.help import cmd_show_help
@@ -24,10 +23,11 @@ from .src.command.propose import cmd_propose, handle_propose_response
 from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
 from .src.command.reset_propose_cd import cmd_reset_propose_cd
-from .src.user_profiles import (
-    get_avatar_url,
+from .src.platforms.user_profiles import (
+    get_avatar_source,
     get_display_name,
-    remember_official_profile,
+    get_platform_members,
+    remember_user_profile,
 )
 
 from .src.constants import _DEFAULT_KEYWORD_ROUTES
@@ -41,6 +41,7 @@ from .src.utils import (
 
 from .src.debug import debug_log
 from .src.debug_utils import run_debug_graph
+from .src.i18n import tr
 # 新增：导入 core helpers
 from .src.core import (
     ACTIVE_USERS_SAVE_INTERVAL_SECONDS,
@@ -192,7 +193,7 @@ class RandomWifePlugin(Star):
                 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
-        remember_official_profile(self, event)
+        remember_user_profile(self, event)
         record_active(self, event)
         # 在这里触发挑选回复检查钩子，因为它能捕获所有群内纯文本
         if not event.is_private_chat():
@@ -203,7 +204,7 @@ class RandomWifePlugin(Star):
             async for result in handle_propose_response(self, event):
                 yield result
 
-    @filter.command("今日老婆", alias={"抽老婆", "jrlp"})
+    @filter.command("今日老婆", alias={"抽老婆", "jrlp", "dailywife", "wife"})
     async def draw_wife(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_draw_wife(event):
@@ -213,7 +214,7 @@ class RandomWifePlugin(Star):
         # 清理完不在群的人后
         
         if event.is_private_chat():
-            yield event.plain_result("此功能仅在群聊中可用哦~")
+            yield event.plain_result(tr(self, "group_only"))
             return
 
         group_id = str(event.get_group_id())
@@ -228,7 +229,7 @@ class RandomWifePlugin(Star):
             debug_log(self, "draw", f"skip disallowed group={group_id}")
             return
 
-        user_id, bot_id = str(event.get_sender_id()), str(event.get_self_id())
+        user_id, bot_id = str(event.get_sender_id()), self_user_id(event)
         cleanup_inactive(self, group_id)
 
         daily_limit = self.config.get("daily_limit", 1)
@@ -247,7 +248,7 @@ class RandomWifePlugin(Star):
                 wife_record = user_recs[0]
                 wife_name, wife_id = wife_record["wife_name"], wife_record["wife_id"]
                 wife_name = get_display_name(self, event, wife_id, fallback=wife_name)
-                wife_avatar = get_avatar_url(self, event, wife_id)
+                wife_avatar = await get_avatar_source(self, event, wife_id)
                 if can_onebot_withdraw(self, event):
                     message_id = await send_onebot_message(
                         self,
@@ -257,7 +258,7 @@ class RandomWifePlugin(Star):
                             {
                                 "type": "text",
                                 "data": {
-                                    "text": f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"
+                                    "text": tr(self, "wife_existing", wife_name=wife_name)
                                 },
                             },
                             {"type": "image", "data": {"file": wife_avatar}},
@@ -268,14 +269,14 @@ class RandomWifePlugin(Star):
                     return
 
                 chain = [
-                    Comp.At(qq=user_id),
-                    Comp.Plain(f" 你今天已经有老婆了哦❤️~\n她是：【{wife_name}】\n"),
+                    mention_user(self, event, user_id),
+                    Comp.Plain(tr(self, "wife_existing", wife_name=wife_name)),
                 ]
                 if wife_avatar:
-                    chain.append(Comp.Image.fromURL(wife_avatar))
-                yield event.chain_result(chain)
+                    chain.append(avatar_image(wife_avatar))
+                yield event.chain_result(platform_chain(event, chain))
             else:
-                text = f"你今天已经抽了{today_count}次老婆了，明天再来吧！"
+                text = tr(self, "daily_limit", count=today_count)
                 if can_onebot_withdraw(self, event):
                     message_id = await send_onebot_message(
                         self, event, message=[{"type": "text", "data": {"text": text}}]
@@ -291,18 +292,11 @@ class RandomWifePlugin(Star):
         current_member_ids: list[str] = []
         members = []
         try:
-            if event.get_platform_name() == "aiocqhttp":
-                assert isinstance(event, AiocqhttpMessageEvent)
-                members = await event.bot.api.call_action(
-                    "get_group_member_list", group_id=int(group_id)
-                )
-                if (
-                    isinstance(members, dict)
-                    and "data" in members
-                    and isinstance(members["data"], list)
-                ):
-                    members = members["data"]
-                current_member_ids = [str(m.get("user_id")) for m in members]
+            members = await get_platform_members(self, event)
+            current_member_ids = [
+                str(m.get("user_id")) for m in members if not m.get("is_bot", False)
+            ]
+            if current_member_ids:
                 debug_log(
                     self,
                     "draw",
@@ -319,7 +313,7 @@ class RandomWifePlugin(Star):
         excluded.update([user_id, "0"])
 
         # 核心逻辑：如果在 aiocqhttp 平台，只从【当前还在群里】的人中抽取
-        if current_member_ids:
+        if current_member_ids or is_telegram_event(event):
             pool = [
                 uid
                 for uid in active_pool.keys()
@@ -352,7 +346,9 @@ class RandomWifePlugin(Star):
             f"excluded={len(excluded)} candidates={len(pool)}",
         )
         if not pool:
-            yield event.plain_result(f"老婆池为空（需有人在{get_active_user_days(self)}天内发言）。")
+            yield event.plain_result(
+                tr(self, "wife_pool_empty", days=get_active_user_days(self))
+            )
             return
 
         wife_id = random.choice(pool)
@@ -361,16 +357,12 @@ class RandomWifePlugin(Star):
             self, event, user_id, fallback=event.get_sender_name() or f"用户({user_id})"
         )
 
-        try:
-            if event.get_platform_name() == "aiocqhttp":
-                wife_name = resolve_member_name(
-                    members, user_id=wife_id, fallback=wife_name
-                )
-                user_name = resolve_member_name(
-                    members, user_id=user_id, fallback=user_name
-                )
-        except Exception:
-            pass
+        wife_name = resolve_member_name(
+            members, user_id=wife_id, fallback=wife_name
+        )
+        user_name = resolve_member_name(
+            members, user_id=user_id, fallback=user_name
+        )
 
         timestamp = datetime.now().isoformat()
         debug_log(self, "draw", f"selected group={group_id} user={user_id} wife={wife_id}")
@@ -395,18 +387,20 @@ class RandomWifePlugin(Star):
 
         save_json(self.records_file, self.records, self.records_file, self.config)
 
-        avatar_url = get_avatar_url(self, event, wife_id)
-        suffix_text = (
-            "\n请好好对待她哦❤️~ \n"
-            f"剩余抽取次数：{max(0, daily_limit - today_count - 1)}次"
+        avatar_url = await get_avatar_source(self, event, wife_id)
+        suffix_text = tr(
+            self,
+            "draw_suffix",
+            remaining=max(0, daily_limit - today_count - 1),
         )
+        result_text = tr(self, "draw_result", wife_name=wife_name)
         
         at_waifu_enabled = self.config.get("at_waifu", False)
         if can_onebot_withdraw(self, event):
             # --- OneBot 路径改动 ---
             msg_list = [
                 {"type": "at", "data": {"qq": user_id}},
-                {"type": "text", "data": {"text": f" 你的今日老婆是：\n\n【{wife_name}】\n"}},
+                {"type": "text", "data": {"text": result_text}},
             ]
             
             # 如果开启了艾特老婆，就把老婆的 at 加进去
@@ -426,19 +420,19 @@ class RandomWifePlugin(Star):
 
         # --- AstrBot 标准路径改动 ---
         chain = [
-            Comp.At(qq=user_id),
-            Comp.Plain(f" 你的今日老婆是：\n\n【{wife_name}】\n"),
+            mention_user(self, event, user_id),
+            Comp.Plain(result_text),
         ]
         
         if at_waifu_enabled:
-            chain.append(Comp.At(qq=wife_id))
+            chain.append(mention_user(self, event, wife_id))
         
         if avatar_url:
-            chain.append(Comp.Image.fromURL(avatar_url))
+            chain.append(avatar_image(avatar_url))
         chain.append(Comp.Plain(suffix_text))
-        yield event.chain_result(chain)
+        yield event.chain_result(platform_chain(event, chain))
 
-    @filter.command("我的老婆", alias={"抽取历史", "wdlp"})
+    @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_show_history(event):
@@ -448,7 +442,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_show_history(self, event):
             yield result
 
-    @filter.command("分手", alias={"fs"})
+    @filter.command("分手", alias={"fs", "breakup"})
     async def breakup(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_breakup(event):
@@ -458,7 +452,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_breakup(self, event):
             yield result
 
-    @filter.command("强娶", alias={"qiangqu"})
+    @filter.command("强娶", alias={"qiangqu", "forcemarry"})
     async def force_marry(self, event: AstrMessageEvent):
         """强娶 + @要娶的那个人"""
         event.stop_event()
@@ -469,7 +463,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_force_marry(self, event):
             yield result
 
-    @filter.command("关系图", alias={"gxt"})
+    @filter.command("关系图", alias={"gxt", "relations"})
     async def show_graph(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_show_graph(self, event):
@@ -479,7 +473,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_show_graph(self, event):
             yield result
 
-    @filter.command("rbq排行", alias={"rbqph"})
+    @filter.command("rbq排行", alias={"rbqph", "wifeleaderboard"})
     async def rbq_ranking(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_rbq_ranking(self, event):
@@ -506,9 +500,7 @@ class RandomWifePlugin(Star):
         self.breakup_records = {}
         save_json(self.records_file, self.records)
         save_json(self.breakup_file, self.breakup_records)
-        yield event.plain_result(
-            "今日抽取记录、分手冷却时间和本群挑选老婆冷却已重置！"
-        )
+        yield event.plain_result(tr(self, "reset_records"))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间", alias={"czqqsj"})
@@ -525,9 +517,9 @@ class RandomWifePlugin(Star):
             save_json(self.forced_file, self.forced_records)
 
             logger.info(f"[Wife] 已重置群 {group_id} 的强娶冷却时间")
-            yield event.plain_result("✅ 本群强娶冷却时间已重置！现在大家可以再次强娶了。")
+            yield event.plain_result(tr(self, "reset_force_done"))
         else:
-            yield event.plain_result("💡 本群目前没有人在冷却期内。")
+            yield event.plain_result(tr(self, "reset_force_empty"))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置求婚时间", alias={"czqhsj"})
@@ -536,7 +528,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_reset_propose_cd(self, event):
             yield result
 
-    @filter.command("抽老婆帮助", alias={"老婆插件帮助", "clpbz"})
+    @filter.command("抽老婆帮助", alias={"老婆插件帮助", "clpbz", "wifehelp"})
     async def show_help(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_show_help(self, event):
@@ -556,14 +548,14 @@ class RandomWifePlugin(Star):
         async for result in run_debug_graph(self, event):
             yield result
         
-    @filter.command("求婚", alias={"qh"})
+    @filter.command("求婚", alias={"qh", "propose"})
     async def propose_command(self, event: AstrMessageEvent):
         event.stop_event()
         # 调用外部的发起求婚逻辑
         async for result in cmd_propose(self, event):
             yield result
 
-    @filter.command("挑选老婆", alias={"txlp"})
+    @filter.command("挑选老婆", alias={"txlp", "pickwife"})
     async def pick_wife(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_pick_wife(event):
