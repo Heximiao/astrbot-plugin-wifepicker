@@ -15,7 +15,7 @@ from .src.platforms.telegram_support import is_telegram_event, self_user_id
 from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
 from .src.command.help import cmd_show_help
-from .src.command.breakup import cmd_breakup
+from .src.command.breakup import cmd_breakup, handle_breakup_response
 from .src.command.forced_marriage import cmd_force_marry
 from .src.command.my_wife import cmd_show_history
 from .src.command.pick_wife import cmd_pick_wife, handle_pick_response
@@ -156,6 +156,10 @@ class RandomWifePlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def keyword_trigger(self, event: AstrMessageEvent):
+        async for result in handle_breakup_response(self, event):
+            yield result
+        if getattr(event, "_wifepicker_breakup_handled", False):
+            return
         # 1. 检查开关
         if not self.config.get("keyword_trigger_enabled", False):
             return
@@ -195,6 +199,10 @@ class RandomWifePlugin(Star):
     async def track_active(self, event: AstrMessageEvent):
         remember_user_profile(self, event)
         record_active(self, event)
+        async for result in handle_breakup_response(self, event):
+            yield result
+        if getattr(event, "_wifepicker_breakup_handled", False):
+            return
         # 在这里触发挑选回复检查钩子，因为它能捕获所有群内纯文本
         if not event.is_private_chat():
             async for result in handle_pick_response(self, event):
@@ -442,7 +450,7 @@ class RandomWifePlugin(Star):
         async for result in cmd_show_history(self, event):
             yield result
 
-    @filter.command("分手", alias={"fs", "breakup"})
+    @filter.command("分手", alias={"fs", "breakup", "离婚"})
     async def breakup(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in self._cmd_breakup(event):

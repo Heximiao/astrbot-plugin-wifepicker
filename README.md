@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.6-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.7-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
@@ -50,7 +50,7 @@
 | `/重置求婚时间` | `czqhsj` | - | 管理员 | 清空当前群所有人的求婚冷却 CD |
 | `/抽老婆帮助` | `clpbz` | `老婆插件帮助` | 用户 | 查看详细指令说明 |
 | `/求婚 @用户` | `qh` | - | 用户 | 向群友发起求婚 |
-| `/分手` | `fs` | - | 用户 | 解除普通老婆关系，强娶关系不可解除，每 72 小时可用一次 |
+| `/分手`、`/离婚` | `fs` | - | 用户 | 每日上限大于 1 时显示离婚列表，可选择一人或全部离婚；强娶关系不可解除，成功后冷却 72 小时 |
 | `/挑选老婆` | `txlp` | - | 用户 | 从随机抽取的候选群友中选择一位成为今日老婆 |
 
 求婚发起后，对方可在 30 秒内回复 `同意` 接受，或回复 `拒绝` 拒绝。若被拒绝，发起方可按机器人提示继续确认是否转入强娶流程。
