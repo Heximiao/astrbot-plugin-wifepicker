@@ -214,6 +214,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("今日老婆", alias={"抽老婆", "jrlp", "dailywife", "wife"})
     async def draw_wife(self, event: AstrMessageEvent):
+        """抽取今日老婆"""
         event.stop_event()
         async for result in self._cmd_draw_wife(event):
             yield result
@@ -442,7 +443,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):
-        """抽取今日老婆"""
+        """查看老婆"""
         event.stop_event()
         async for result in self._cmd_show_history(event):
             yield result
