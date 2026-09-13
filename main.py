@@ -442,6 +442,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):
+        """抽取今日老婆"""
         event.stop_event()
         async for result in self._cmd_show_history(event):
             yield result
@@ -452,6 +453,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("分手", alias={"fs", "breakup", "离婚"})
     async def breakup(self, event: AstrMessageEvent):
+        """分手"""
         event.stop_event()
         async for result in self._cmd_breakup(event):
             yield result
@@ -473,6 +475,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("关系图", alias={"gxt", "relations"})
     async def show_graph(self, event: AstrMessageEvent):
+        """显示关系图"""
         event.stop_event()
         async for result in cmd_show_graph(self, event):
             yield result
@@ -483,6 +486,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("rbq排行", alias={"rbqph", "wifeleaderboard"})
     async def rbq_ranking(self, event: AstrMessageEvent):
+        """被强娶排行榜"""
         event.stop_event()
         async for result in cmd_rbq_ranking(self, event):
             yield result
@@ -558,6 +562,7 @@ class RandomWifePlugin(Star):
         
     @filter.command("求婚", alias={"qh", "propose"})
     async def propose_command(self, event: AstrMessageEvent):
+        """@某人 发起求婚"""
         event.stop_event()
         # 调用外部的发起求婚逻辑
         async for result in cmd_propose(self, event):
@@ -565,6 +570,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("挑选老婆", alias={"txlp", "pickwife"})
     async def pick_wife(self, event: AstrMessageEvent):
+        """在群内候选池挑选老婆"""
         event.stop_event()
         async for result in self._cmd_pick_wife(event):
             yield result
