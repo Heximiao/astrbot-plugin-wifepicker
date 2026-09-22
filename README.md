@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.8-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.3.9-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
@@ -142,4 +142,4 @@ astrbot-plugin-wifepicker/
 └── pic/                       # README 演示图片
 ```
 
-运行数据会写入 AstrBot 插件数据目录下的 `random_wife/`，常见文件包括 `wife_records.json`、`active_users.json`、`marriage_action_records.json`、`breakup_cooldowns.json` 和 `rbq_stats.json` 等。
+运行数据会写入 AstrBot 插件数据目录下的 `astrbot_plugin_wifepicker/`。升级时会将旧 `random_wife/` 目录中尚未存在于新目录的文件复制过去，旧目录保留以便回滚；如新旧目录有同名文件，以新目录为准。常见文件包括 `wife_records.json`、`active_users.json`、`marriage_action_today.json`、`breakup_cooldowns.json` 和 `rbq_stats.json` 等。

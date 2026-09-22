@@ -1,10 +1,6 @@
 import os
-import time
 
-import logging
-from datetime import datetime
-
-logger = logging.getLogger("astrbot")
+from astrbot.api import logger
 
 async def run_debug_graph(plugin_instance, event):
     '''

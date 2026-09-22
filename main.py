@@ -1,6 +1,7 @@
 import asyncio
 import os
 import random
+import shutil
 import time
 from datetime import datetime
 
@@ -82,6 +83,30 @@ def _format_remaining_seconds(seconds: float) -> str:
         return f"{mins}分{secs}秒"
     return f"{total_seconds}秒"
 
+
+def _migrate_legacy_data(legacy_dir: str, data_dir: str) -> None:
+    """Copy legacy data without deleting it or overwriting newer data."""
+    marker = os.path.join(data_dir, ".legacy_migration_complete")
+    if os.path.exists(marker):
+        return
+    if not os.path.isdir(legacy_dir):
+        os.makedirs(data_dir, exist_ok=True)
+        return
+
+    for root, _, files in os.walk(legacy_dir):
+        relative = os.path.relpath(root, legacy_dir)
+        target_dir = os.path.join(data_dir, relative)
+        os.makedirs(target_dir, exist_ok=True)
+        for filename in files:
+            source = os.path.join(root, filename)
+            target = os.path.join(target_dir, filename)
+            if os.path.exists(target):
+                continue
+            shutil.copy2(source, target)
+            logger.info(f"已迁移插件数据: {source} -> {target}")
+    with open(marker, "w", encoding="utf-8") as migrated:
+        migrated.write("Legacy data copied; original directory retained.\n")
+
 class RandomWifePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
@@ -91,8 +116,12 @@ class RandomWifePlugin(Star):
 
         self._withdraw_tasks: set[asyncio.Task] = set()
         
-        # 数据存储相对路径
-        self.data_dir = os.path.join(get_astrbot_plugin_data_path(), "random_wife")
+        # 与 metadata.yaml 中的插件名一致；保留旧数据目录供回滚使用。
+        plugin_data_root = get_astrbot_plugin_data_path()
+        self.data_dir = os.path.join(plugin_data_root, "astrbot_plugin_wifepicker")
+        _migrate_legacy_data(
+            os.path.join(plugin_data_root, "random_wife"), self.data_dir
+        )
         self.records_file = os.path.join(self.data_dir, "wife_records.json")
         self.active_file = os.path.join(self.data_dir, "active_users.json") 
         self.official_profiles_file = os.path.join(
