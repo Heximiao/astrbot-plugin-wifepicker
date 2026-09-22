@@ -50,6 +50,12 @@ class PickRequest:
 pick_requests: dict[str, dict[str, PickRequest]] = {}
 
 
+def has_pending_pick(group_id: str, user_id: str) -> bool:
+    """Whether this user still has an active candidate list in the group."""
+    _cleanup_expired_requests(group_id)
+    return isinstance(pick_requests.get(group_id, {}).get(user_id), PickRequest)
+
+
 def _get_pick_cooldowns(plugin_instance) -> dict[str, dict[str, float]]:
     """Return persisted per-group cooldown records for the pick command."""
     cooldowns = plugin_instance.records.get("pick_cooldowns")
@@ -457,6 +463,13 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
 
     wife_id = req.candidates[index - 1]
     wife_name = req.candidate_names[index - 1]
+    group_records = get_group_records(plugin_instance, group_id)
+    daily_limit = plugin_instance.config.get("daily_limit", 1)
+    if sum(r["user_id"] == user_id for r in group_records) >= daily_limit:
+        _delete_request(group_id, user_id)
+        event.stop_event()
+        yield event.plain_result(tr(plugin_instance, "pick_already_done"))
+        return
     _delete_request(group_id, user_id)
 
     timestamp = datetime.now().isoformat()
@@ -466,7 +479,6 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         user_id,
         fallback=event.get_sender_name() or f"用户({user_id})",
     )
-    group_records = get_group_records(plugin_instance, group_id)
     group_records.append(
         {
             "user_id": user_id,

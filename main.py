@@ -18,7 +18,7 @@ from .src.command.help import cmd_show_help
 from .src.command.breakup import cmd_breakup, handle_breakup_response
 from .src.command.forced_marriage import cmd_force_marry
 from .src.command.my_wife import cmd_show_history
-from .src.command.pick_wife import cmd_pick_wife, handle_pick_response
+from .src.command.pick_wife import cmd_pick_wife, handle_pick_response, has_pending_pick
 from .src.command.propose import cmd_propose, handle_propose_response
 from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
@@ -239,6 +239,10 @@ class RandomWifePlugin(Star):
 
         user_id, bot_id = str(event.get_sender_id()), self_user_id(event)
         cleanup_inactive(self, group_id)
+
+        if has_pending_pick(group_id, user_id):
+            yield event.plain_result(tr(self, "pick_in_progress"))
+            return
 
         daily_limit = self.config.get("daily_limit", 1)
         group_records = get_group_records(self, group_id)
