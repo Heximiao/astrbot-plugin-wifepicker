@@ -60,12 +60,6 @@
             "step": 1
         }
     },
-    "debug_enabled": {
-        "type": "bool",
-        "description": "全局调试日志",
-        "hint": "开启后会输出抽取流程、候选池、群成员过滤、活跃池清理等调试日志。排查完成后建议关闭。",
-        "default": false
-    },
     "excluded_users": {
         "type": "list",
         "description": "排除用户列表",
@@ -174,5 +168,11 @@
             "max": 6,
             "step": 1
         }
+    },
+    "debug_enabled": {
+        "type": "bool",
+        "description": "全局调试日志",
+        "hint": "开启后会输出抽取流程、候选池、群成员过滤、活跃池清理，以及挑选老婆和求婚的请求、回复、超时等调试日志。排查完成后建议关闭。",
+        "default": false
     }
 }

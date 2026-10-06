@@ -115,6 +115,7 @@ class RandomWifePlugin(Star):
         self.curr_dir = os.path.dirname(__file__)
 
         self._withdraw_tasks: set[asyncio.Task] = set()
+        self._propose_timeout_tasks: set[asyncio.Task] = set()
         
         # 与 metadata.yaml 中的插件名一致；保留旧数据目录供回滚使用。
         plugin_data_root = get_astrbot_plugin_data_path()
@@ -607,6 +608,11 @@ class RandomWifePlugin(Star):
             yield result
 
     async def terminate(self):
+        for task in tuple(self._propose_timeout_tasks):
+            task.cancel()
+        if self._propose_timeout_tasks:
+            await asyncio.gather(*self._propose_timeout_tasks, return_exceptions=True)
+        self._propose_timeout_tasks.clear()
         await stop_active_users_save_task(self)
         save_json(self.records_file, self.records)
         save_active_users(self, force_trim=True, force=True)

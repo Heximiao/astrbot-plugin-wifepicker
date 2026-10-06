@@ -23,6 +23,7 @@ from ..utils import is_allowed_group, resolve_member_name, save_json
 from ..platforms.user_profiles import get_avatar_source, get_display_name, get_platform_members
 from ...waifu_relations import maybe_add_other_half_record
 from ..i18n import tr
+from ..debug import debug_log
 
 PICK_RESPONSE_SECONDS = 30
 PICK_COOLDOWN_SECONDS = 24 * 60 * 60
@@ -238,7 +239,8 @@ async def _draw_candidates(
         current_member_ids = [
             str(m.get("user_id")) for m in members if not m.get("is_bot", False)
         ]
-    except Exception:
+    except Exception as e:
+        debug_log(plugin_instance, "pick", f"member_lookup_failed group={group_id} error={e}")
         members = []
 
     bot_id = self_user_id(event)
@@ -260,6 +262,7 @@ async def _draw_candidates(
     else:
         pool = [uid for uid in active_pool.keys() if uid not in excluded]
 
+    debug_log(plugin_instance, "pick", f"pool group={group_id} user={user_id} active={len(active_pool)} members={len(members)} current_member_ids={len(current_member_ids)} member_filter={bool(current_member_ids) or is_telegram_event(event)} excluded={sorted(excluded)} eligible={len(pool)} requested={count}")
     random.shuffle(pool)
     chosen = pool[:count]
 
@@ -271,36 +274,42 @@ async def _draw_candidates(
         except Exception:
             pass
         result.append((uid, name))
+    debug_log(plugin_instance, "pick", f"candidates group={group_id} user={user_id} selected={result}")
     return result
 
 
 # 这个命令用于触发挑选老婆的逻辑（人话：相亲）
 async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     """「挑选老婆」命令入口：校验后抽取候选并展示编号列表。"""
+    debug_log(plugin_instance, "pick", f"start group={event.get_group_id()} user={event.get_sender_id()} private={event.is_private_chat()}")
     if event.is_private_chat():
         yield event.plain_result(tr(plugin_instance, "group_only"))
         return
 
     group_id = str(event.get_group_id())
     if not is_allowed_group(group_id, plugin_instance.config):
+        debug_log(plugin_instance, "pick", f"skip group={group_id} reason=disallowed_group")
         return
 
     user_id = str(event.get_sender_id())
     group_records = get_group_records(plugin_instance, group_id)
     today_count = len([r for r in group_records if r["user_id"] == user_id])
     daily_limit = plugin_instance.config.get("daily_limit", 1)
+    debug_log(plugin_instance, "pick", f"daily group={group_id} user={user_id} today_count={today_count} limit={daily_limit}")
     if today_count >= daily_limit:
         yield event.plain_result(tr(plugin_instance, "pick_already_done"))
         return
 
     _cleanup_expired_requests(group_id)
     if isinstance(pick_requests.get(group_id, {}).get(user_id), PickRequest):
+        debug_log(plugin_instance, "pick", f"blocked group={group_id} user={user_id} reason=pending_request")
         yield event.plain_result(tr(plugin_instance, "pick_in_progress"))
         return
 
     cooldown_remaining = _get_pick_cooldown_remaining(
         plugin_instance, group_id, user_id
     )
+    debug_log(plugin_instance, "pick", f"cooldown group={group_id} user={user_id} remaining={cooldown_remaining} started_today={_pick_cooldown_started_today(plugin_instance, group_id, user_id)}")
     # 当天的后续批次由每日额度控制，避免放弃或超时后被首批冷却拦住。
     if cooldown_remaining > 0 and not _pick_cooldown_started_today(
         plugin_instance, group_id, user_id
@@ -313,6 +322,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
 
     retry_limit = _get_retry_limit(plugin_instance)
     used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
+    debug_log(plugin_instance, "pick", f"batches group={group_id} user={user_id} used={used_retry_count} limit={retry_limit}")
     if retry_limit > 0 and used_retry_count >= retry_limit:
         yield event.plain_result(
             tr(plugin_instance, "pick_batches_used", limit=retry_limit)
@@ -344,6 +354,7 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
         retry_count=used_retry_count,
     )
     pick_requests.setdefault(group_id, {})[user_id] = req
+    debug_log(plugin_instance, "pick", f"request_created group={group_id} user={user_id} candidates={req.candidates} batch={req.retry_count} expire={req.expire_at}")
 
     yield event.plain_result(_format_candidate_list(plugin_instance, req))
 
@@ -388,14 +399,19 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     user_id = str(event.get_sender_id())
     msg = event.message_str.strip()
 
+    previous_req = pick_requests.get(group_id, {}).get(user_id)
+    if isinstance(previous_req, PickRequest) and previous_req.expire_at <= time.time():
+        debug_log(plugin_instance, "pick", f"request_expired group={group_id} user={user_id} expire={previous_req.expire_at}")
     _cleanup_expired_requests(group_id)
     req = pick_requests.get(group_id, {}).get(user_id)
     if not isinstance(req, PickRequest):
         return
 
+    debug_log(plugin_instance, "pick", f"response group={group_id} user={user_id} reply={msg!r} batch={req.retry_count} expire={req.expire_at}")
     # 用户觉得这批都不行，重新抽一批（人话：没一个顺眼的，换个组相亲）
     if msg in RESELECT_KEYWORDS:
         if not _can_retry(plugin_instance, group_id, user_id):
+            debug_log(plugin_instance, "pick", f"retry_blocked group={group_id} user={user_id} used={_get_used_retry_count(plugin_instance, group_id, user_id)} limit={_get_retry_limit(plugin_instance)}")
             event.stop_event()
             yield event.plain_result(
                 tr(
@@ -425,12 +441,14 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
             retry_count=used_retry_count,
         )
         pick_requests[group_id][user_id] = new_req
+        debug_log(plugin_instance, "pick", f"reselected group={group_id} user={user_id} candidates={new_req.candidates} batch={new_req.retry_count} expire={new_req.expire_at}")
         event.stop_event()
         yield event.plain_result(_format_candidate_list(plugin_instance, new_req))
         return
 
     # 放弃仅结束当前请求，不退还已经展示的候选批次。
     if msg in ABANDON_KEYWORDS:
+        debug_log(plugin_instance, "pick", f"abandoned group={group_id} user={user_id}")
         used_retry_count = _get_used_retry_count(plugin_instance, group_id, user_id)
         _delete_request(group_id, user_id)
         event.stop_event()
@@ -455,6 +473,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
 
     index = int(msg)
     if not (1 <= index <= len(req.candidates)):
+        debug_log(plugin_instance, "pick", f"invalid_number group={group_id} user={user_id} index={index} max={len(req.candidates)}")
         event.stop_event()
         yield event.plain_result(
             tr(plugin_instance, "pick_invalid_number", max=len(req.candidates))
@@ -465,7 +484,9 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
     wife_name = req.candidate_names[index - 1]
     group_records = get_group_records(plugin_instance, group_id)
     daily_limit = plugin_instance.config.get("daily_limit", 1)
+    debug_log(plugin_instance, "pick", f"confirm_check group={group_id} user={user_id} index={index} wife={wife_id} today_count={sum(r['user_id'] == user_id for r in group_records)} limit={daily_limit}")
     if sum(r["user_id"] == user_id for r in group_records) >= daily_limit:
+        debug_log(plugin_instance, "pick", f"confirm_blocked group={group_id} user={user_id} reason=daily_limit")
         _delete_request(group_id, user_id)
         event.stop_event()
         yield event.plain_result(tr(plugin_instance, "pick_already_done"))
@@ -506,6 +527,7 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         plugin_instance.config,
     )
 
+    debug_log(plugin_instance, "pick", f"confirmed group={group_id} user={user_id} wife={wife_id} wife_name={wife_name}")
     event.stop_event()
     async for result in _send_pick_confirmation(
         plugin_instance, event, user_id, wife_id, wife_name

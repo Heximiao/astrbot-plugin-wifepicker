@@ -16,6 +16,7 @@ from .forced_marriage import cmd_force_marry
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
 from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_chain
 from ..i18n import format_duration, tr
+from ..debug import debug_log
 
 # 群内待处理的求婚请求
 propose_requests = {}
@@ -139,6 +140,7 @@ def _format_remaining_seconds(seconds: float) -> str:
 
 async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     """发起求婚指令的逻辑"""
+    debug_log(plugin_instance, "propose", f"start group={event.get_group_id()} user={event.get_sender_id()} private={event.is_private_chat()}")
     if event.is_private_chat():
         yield event.plain_result(tr(plugin_instance, "propose_group_only"))
         return
@@ -147,6 +149,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     group_id = str(event.get_group_id())
     target_id = extract_target_id_from_message(event, plugin_instance)
 
+    debug_log(plugin_instance, "propose", f"target group={group_id} proposer={user_id} target={target_id}")
     if not target_id or target_id == "all":
         yield event.plain_result(tr(plugin_instance, "propose_need_target"))
         return
@@ -155,6 +158,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
         return
 
     user_force_cd = get_force_marry_cooldown_status(plugin_instance, group_id, user_id)
+    debug_log(plugin_instance, "propose", f"force_cd_self group={group_id} user={user_id} status={user_force_cd}")
     if user_force_cd:
         yield event.plain_result(tr(plugin_instance, "propose_force_cd_self"))
         return
@@ -162,11 +166,13 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     target_force_cd = get_force_marry_cooldown_status(
         plugin_instance, group_id, target_id
     )
+    debug_log(plugin_instance, "propose", f"force_cd_target group={group_id} target={target_id} status={target_force_cd}")
     if target_force_cd:
         yield event.plain_result(tr(plugin_instance, "propose_force_cd_target"))
         return
 
     user_propose_cd = get_propose_cooldown_status(plugin_instance, group_id, user_id)
+    debug_log(plugin_instance, "propose", f"propose_cd_self group={group_id} user={user_id} status={user_propose_cd}")
     if user_propose_cd:
         remaining_text = format_duration(plugin_instance, user_propose_cd["remaining"])
         yield event.plain_result(
@@ -177,6 +183,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     target_propose_cd = get_propose_cooldown_status(
         plugin_instance, group_id, target_id
     )
+    debug_log(plugin_instance, "propose", f"propose_cd_target group={group_id} target={target_id} status={target_propose_cd}")
     if target_propose_cd:
         remaining_text = format_duration(plugin_instance, target_propose_cd["remaining"])
         yield event.plain_result(
@@ -191,10 +198,11 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
         target_name = resolve_member_name(
             members, user_id=target_id, fallback=target_name
         )
-    except Exception:
-        pass
+    except Exception as e:
+        debug_log(plugin_instance, "propose", f"member_lookup_failed group={group_id} target={target_id} error={e}")
 
     pending_target_id, _ = _get_pending_request_by_proposer(group_id, user_id)
+    debug_log(plugin_instance, "propose", f"pending_check group={group_id} proposer={user_id} pending_target={pending_target_id}")
     if pending_target_id is not None:
         yield event.plain_result(tr(plugin_instance, "propose_pending"))
         return
@@ -215,6 +223,15 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
         "umo": event.unified_msg_origin,
     }
 
+    # 在 yield 前启动计时，避免 stop_event 导致生成器不再恢复。
+    req = propose_requests[group_id][target_id]
+    debug_log(plugin_instance, "propose", f"request_created group={group_id} proposer={user_id} target={target_id} target_name={target_name} expire={req['expire']} timeout_seconds={PROPOSE_RESPONSE_SECONDS}")
+    task = asyncio.create_task(
+        _notify_propose_timeout(plugin_instance, event, group_id, target_id, req)
+    )
+    plugin_instance._propose_timeout_tasks.add(task)
+    task.add_done_callback(plugin_instance._propose_timeout_tasks.discard)
+
     yield event.plain_result(
         tr(
             plugin_instance,
@@ -224,25 +241,28 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
         )
     )
 
+async def _notify_propose_timeout(plugin_instance, event, group_id, target_id, req):
     await asyncio.sleep(PROPOSE_RESPONSE_SECONDS)
-    if group_id in propose_requests and target_id in propose_requests[group_id]:
-        req = propose_requests[group_id][target_id]
-        if req["proposer_id"] == user_id:
-            chain_obj = MessageChain()
-            chain_obj.chain = [
-                mention_user(plugin_instance, event, user_id),
-                Comp.Plain(text=tr(plugin_instance, "propose_timeout")),
-            ]
+    # 请求已处理或被新求婚替换时，旧计时任务不能影响新请求。
+    if propose_requests.get(group_id, {}).get(target_id) is not req:
+        debug_log(plugin_instance, "propose", f"timeout_skipped group={group_id} proposer={req['proposer_id']} target={target_id} reason=request_removed_or_replaced")
+        return
 
-            chain_obj.chain = platform_chain(event, chain_obj.chain)
-            try:
-                await plugin_instance.context.send_message(req["umo"], chain_obj)
-            except Exception as e:
-                from astrbot.api import logger
+    debug_log(plugin_instance, "propose", f"timeout group={group_id} proposer={req['proposer_id']} target={target_id}")
 
-                logger.error(f"[propose] 发送超时提醒失败: {e}")
+    _delete_request(group_id, target_id)
+    try:
+        chain_obj = MessageChain()
+        chain_obj.chain = platform_chain(event, [
+            mention_user(plugin_instance, event, req["proposer_id"]),
+            Comp.Plain(text=tr(plugin_instance, "propose_timeout")),
+        ])
+        sent = await plugin_instance.context.send_message(req["umo"], chain_obj)
+        debug_log(plugin_instance, "propose", f"timeout_send group={group_id} target={target_id} platform_found={sent}")
+    except Exception as e:
+        from astrbot.api import logger
 
-            _delete_request(group_id, target_id)
+        logger.error(f"[propose] 发送超时提醒失败: {e}")
 
 
 async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
@@ -254,6 +274,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
     _cleanup_expired_force_confirmations(group_id)
     force_req = force_confirm_requests.get(group_id, {}).get(user_id)
     if isinstance(force_req, dict):
+        debug_log(plugin_instance, "propose", f"force_confirmation_reply group={group_id} proposer={user_id} target={force_req.get('target_id')} reply={msg!r}")
         if _is_request_expired(force_req):
             _delete_force_confirmation(group_id, user_id)
         elif msg.lower() in ["是", "确认", "强娶", "要", "yes", "confirm", "はい"]:
@@ -275,8 +296,10 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
     _cleanup_expired_requests(group_id)
     if group_id in propose_requests and user_id in propose_requests[group_id]:
         req = propose_requests[group_id][user_id]
+        debug_log(plugin_instance, "propose", f"response group={group_id} proposer={req['proposer_id']} target={user_id} reply={msg!r} expire={req.get('expire')}")
 
         if _is_request_expired(req):
+            debug_log(plugin_instance, "propose", f"response_expired group={group_id} target={user_id}")
             _delete_request(group_id, user_id)
             return
 
@@ -292,6 +315,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
                 plugin_instance, group_id, user_id
             )
             if proposer_force_cd or target_force_cd:
+                debug_log(plugin_instance, "propose", f"accept_invalid group={group_id} proposer={proposer_id} target={user_id} proposer_force_cd={proposer_force_cd} target_force_cd={target_force_cd}")
                 _delete_requests_by_proposer(group_id, proposer_id)
                 yield event.plain_result(tr(plugin_instance, "propose_invalid"))
                 return
@@ -341,6 +365,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             )
 
             _delete_requests_by_proposer(group_id, proposer_id)
+            debug_log(plugin_instance, "propose", f"accepted group={group_id} proposer={proposer_id} target={user_id} daily_limit={daily_limit} proposer_records={sum(r['user_id'] == proposer_id for r in group_records)} target_records={sum(r['user_id'] == user_id for r in group_records)}")
 
             event.stop_event()
             yield event.plain_result(
@@ -365,6 +390,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
                 "umo": event.unified_msg_origin,
             }
 
+            debug_log(plugin_instance, "propose", f"rejected group={group_id} proposer={proposer_id} target={user_id} force_confirm_seconds={FORCE_CONFIRM_SECONDS}")
             event.stop_event()
             chain = [
                 mention_user(plugin_instance, event, proposer_id),
