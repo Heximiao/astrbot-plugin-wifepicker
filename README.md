@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.4.0-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.5.0-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
@@ -16,6 +16,12 @@
 * **QQ 官方机器人兼容**：从官方消息事件缓存昵称和头像，缺失头像时使用 AppID 与 member_openid 获取。
 * **灵活管控**：支持 **群聊黑白名单**、每人每日抽取次数限制及强娶冷却时间设置。
 
+### 关于qq官方bot
+
+官方bot加群以后，一定要在群里的bot的设置里面，机器人可获取的群聊聊天范围里面，选择获取群内全部消息，不然插件无法运作，此选项只可由群主开启。
+
+同时也打开允许主动发消息
+
 ### Discord 配置
 
 建议在 Discord Developer Portal 为机器人开启 `Server Members Intent` 和
@@ -24,7 +30,6 @@
 
 可使用 `wife`、`dailywife`、`mywife`、`pickwife`、`propose`、`breakup`、
 `forcemarry`、`relations`、`wifeleaderboard` 和 `wifehelp` 等英文别名。
-
 
 ### Telegram 配置
 
@@ -114,28 +119,40 @@ astrbot-plugin-wifepicker/
 ├── waifu_relations.py         # 自动设置对方老婆等关系记录辅助逻辑
 ├── _conf_schema.json          # AstrBot 管理面板配置项
 ├── metadata.yaml              # 插件元信息
+├── README.md                  # 使用说明与文件架构
 ├── CHANGELOG.md               # 更新记录
 ├── LICENSE                    # AGPL-3.0 许可证
+├── logo.png                   # 插件图标
+├── vis-network.min.js         # 关系图使用的 Vis.js 库
 ├── src/
+│   ├── __init__.py
 │   ├── constants.py           # 默认关键词路由表
 │   ├── core.py                # 抽取、记录、冷却、清理等核心逻辑
+│   ├── i18n.py                # 多语言文案与时长格式化
 │   ├── utils.py               # @ 目标解析、成员名解析、JSON 读写等工具函数
-│   ├── platforms/            # 平台兼容层
+│   ├── platforms/             # 平台兼容层
 │   │   ├── __init__.py
-│   │   ├── user_profiles.py  # 统一资料入口与 QQ、Discord 适配
+│   │   ├── user_profiles.py   # 资料缓存、昵称与头像解析、跨平台回复格式
 │   │   ├── telegram_support.py # Telegram 用户识别、成员与头像适配
-│   │   └── onebot_api.py     # OneBot API 响应解析
+│   │   └── onebot_api.py      # OneBot API 响应解析
 │   ├── debug.py               # 调试日志入口
 │   ├── debug_utils.py         # 关系图调试数据生成工具
 │   └── command/
+│       ├── __init__.py
 │       ├── breakup.py         # /分手 与 72 小时冷却
+│       ├── forced_marriage.py # /强娶 与冷却、关系记录
 │       ├── help.py            # /抽老婆帮助
 │       ├── my_wife.py         # /我的老婆
 │       ├── pick_wife.py       # /挑选老婆 与 重新挑选/放弃交互流程
 │       ├── propose.py         # /求婚 与同意/拒绝交互流程
 │       ├── rbqrank.py         # /rbq排行
 │       ├── relationdiagram.py # /关系图
-│       └── reset_propose_cd.py# /重置求婚时间
+│       ├── reset_propose_cd.py # /重置求婚时间
+│       └── qq_official/       # QQ 官机交互展示，业务规则由公共命令处理
+│           ├── __init__.py
+│           ├── message.py     # 共用 Markdown 发送、群事件识别与指令按钮
+│           ├── pick_wife_official.py # 挑选候选菜单与确认消息
+│           └── propose_official.py   # 求婚邀请与同意/拒绝按钮
 ├── template/
 │   ├── graph_template.html    # 关系图渲染模板
 │   └── rbq_ranking.html       # rbq 排行渲染模板
