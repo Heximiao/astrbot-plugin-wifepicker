@@ -29,6 +29,8 @@ from .src.platforms.user_profiles import (
     get_display_name,
     get_platform_members,
     remember_user_profile,
+    is_qq_official_event,
+    qq_official_draw_result,
 )
 
 from .src.constants import _DEFAULT_KEYWORD_ROUTES
@@ -310,6 +312,13 @@ class RandomWifePlugin(Star):
                         schedule_onebot_delete_msg(self, event.bot, message_id=message_id)
                     return
 
+                if is_qq_official_event(event):
+                    yield qq_official_draw_result(
+                        event, user_id,
+                        tr(self, "wife_existing", wife_name=wife_name), wife_avatar,
+                    )
+                    return
+
                 chain = [
                     mention_user(self, event, user_id),
                     Comp.Plain(tr(self, "wife_existing", wife_name=wife_name)),
@@ -458,6 +467,14 @@ class RandomWifePlugin(Star):
             message_id = await send_onebot_message(self, event, message=msg_list)
             if message_id is not None:
                 schedule_onebot_delete_msg(self, event.bot, message_id=message_id)
+            return
+
+        if is_qq_official_event(event):
+            yield qq_official_draw_result(
+                event, user_id, result_text, avatar_url,
+                suffix=suffix_text,
+                wife_id=wife_id if at_waifu_enabled else None,
+            )
             return
 
         # --- AstrBot 标准路径改动 ---

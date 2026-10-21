@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import re
 import time
 from typing import Any
 from urllib.parse import quote
@@ -360,6 +361,32 @@ def mention_user(plugin, event, user_id: str):
 
         return mention(plugin, event, user_id)
     return Comp.At(qq=user_id)
+
+
+def qq_official_draw_result(
+    event, user_id: str, text: str, avatar_url: str | None,
+    *, suffix: str = "", wife_id: str | None = None,
+):
+    """Keep the draw's text/image order in one QQ Official Markdown message."""
+    import astrbot.api.message_components as Comp
+
+    def escape_text(value: str) -> str:
+        return re.sub(r"([\\`*_{}\[\]()#+\-.!|>~<])", r"\\\1", value)
+
+    chain = [Comp.At(qq=user_id), Comp.Plain(escape_text(text))]
+    if wife_id:
+        chain.extend([Comp.At(qq=wife_id), Comp.Plain(" ")])
+    if avatar_url:
+        # An Image component would switch AstrBot to msg_type=7 and move the
+        # picture above the text. Embed the public URL in Markdown instead.
+        url = quote(avatar_url, safe=":/?&=%+#@!$*,;~-._")
+        chain.append(Comp.Plain(f"\n\n![avatar #224px #224px]({url})\n\n"))
+    if suffix:
+        chain.append(Comp.Plain(escape_text(suffix)))
+    result = event.chain_result(chain)
+    result.use_markdown_ = True
+    result.use_t2i_ = False
+    return result
 
 
 def platform_chain(event, chain):

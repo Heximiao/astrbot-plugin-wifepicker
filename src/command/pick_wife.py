@@ -24,6 +24,9 @@ from ..platforms.user_profiles import get_avatar_source, get_display_name, get_p
 from ...waifu_relations import maybe_add_other_half_record
 from ..i18n import tr
 from ..debug import debug_log
+from .qq_official.pick_wife_official import (
+    is_official_group, send_candidate_list, send_pick_confirmation,
+)
 
 PICK_RESPONSE_SECONDS = 30
 PICK_COOLDOWN_SECONDS = 24 * 60 * 60
@@ -224,6 +227,12 @@ def _format_candidate_list(plugin_instance, req: PickRequest) -> str:
     return "\n".join(lines)
 
 
+async def _send_candidate_list(plugin_instance, event, req):
+    text = _format_candidate_list(plugin_instance, req)
+    if not await send_candidate_list(plugin_instance, event, req, text):
+        yield event.plain_result(text)
+
+
 # 从活跃池里捞一批人来当候选（人话：先给你物色几个对象看看，有没有顺眼的）
 async def _draw_candidates(
     plugin_instance, event: AstrMessageEvent, user_id: str, count: int
@@ -356,7 +365,8 @@ async def cmd_pick_wife(plugin_instance, event: AstrMessageEvent):
     pick_requests.setdefault(group_id, {})[user_id] = req
     debug_log(plugin_instance, "pick", f"request_created group={group_id} user={user_id} candidates={req.candidates} batch={req.retry_count} expire={req.expire_at}")
 
-    yield event.plain_result(_format_candidate_list(plugin_instance, req))
+    async for result in _send_candidate_list(plugin_instance, event, req):
+        yield result
 
 
 # 把选中的老婆发出来（人话：官宣，你挑中Ta了）
@@ -366,6 +376,10 @@ async def _send_pick_confirmation(
     """发送挑选确认结果（含所选老婆头像）。"""
     avatar_url = await get_avatar_source(plugin_instance, event, wife_id)
     text = tr(plugin_instance, "pick_success", wife_name=wife_name)
+    if is_official_group(event):
+        async for result in send_pick_confirmation(event, user_id, text, avatar_url):
+            yield result
+        return
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
             plugin_instance,
@@ -443,7 +457,8 @@ async def handle_pick_response(plugin_instance, event: AstrMessageEvent):
         pick_requests[group_id][user_id] = new_req
         debug_log(plugin_instance, "pick", f"reselected group={group_id} user={user_id} candidates={new_req.candidates} batch={new_req.retry_count} expire={new_req.expire_at}")
         event.stop_event()
-        yield event.plain_result(_format_candidate_list(plugin_instance, new_req))
+        async for result in _send_candidate_list(plugin_instance, event, new_req):
+            yield result
         return
 
     # 放弃仅结束当前请求，不退还已经展示的候选批次。
