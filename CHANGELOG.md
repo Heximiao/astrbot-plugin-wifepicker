@@ -2,9 +2,13 @@
 请注意！！！使用强娶并@对方时请**长按对方头像@**，或者点击@别人时QQ跳出来的那一栏的名字，不要直接输入名字！！！不要复制黏贴名字！！！只有长按对方头像或者点击跳出来的那个的@才是真的@了对方！！！不然插件没办法获取到QQ号，这一点目前astrbot的所有插件都是一样的
 
 ## 2026.10.21更新
-修复astrbotv29，在qq官方bot的情况下今日老婆会出现@泄露问题。[#39](https://github.com/Heximiao/astrbot-plugin-wifepicker/issues/39)
+修复astrbot v.29，在qq官方bot的情况下各种命令会出现@泄露问题。[#39](https://github.com/Heximiao/astrbot-plugin-wifepicker/issues/39)
 
-添加了官方bot的挑选老婆的md格式的解析
+添加了官方bot的挑选老婆的md格式的选项界面
+
+修复了官方qq强娶无法识别无响应问题
+
+为官方bot的求婚指令添加md的按钮
 
 ## 2026.10.6更新
 修复求婚时被自身event.stop_event()导致无法跳求婚超时的问题，添加完善的debug模式下的日志记录

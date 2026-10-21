@@ -7,7 +7,7 @@ from math import ceil
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
 
-from ..platforms.user_profiles import mention_user, avatar_image, platform_chain
+from ..platforms.user_profiles import mention_user, avatar_image, platform_result
 from ..platforms.telegram_support import is_telegram_event, self_user_id
 from ..core import (
     auto_set_other_half_enabled,
@@ -400,7 +400,7 @@ async def _send_pick_confirmation(
     ]
     if avatar_url:
         chain.append(avatar_image(avatar_url))
-    yield event.chain_result(platform_chain(event, chain))
+    yield platform_result(event, chain)
 
 
 # 处理挑选期间的回复（人话：等着看你回数字/重新挑选/放弃）

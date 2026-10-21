@@ -47,6 +47,9 @@ def _raw_author(event) -> Any:
     raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
     if isinstance(raw, dict):
         return raw.get("author") or {}
+    raw_data = getattr(raw, "raw_data", None)
+    if isinstance(raw_data, dict) and raw_data.get("author"):
+        return raw_data["author"]
     return getattr(raw, "author", None)
 
 
@@ -99,6 +102,7 @@ def _remember_profile(
     user_id: str,
     *,
     nickname: object = "",
+    card: object = "",
     avatar_url: object = "",
     appid: object = "",
 ) -> bool:
@@ -109,9 +113,12 @@ def _remember_profile(
     old = profiles.get(user_id, {})
     updated = dict(old)
     valid_name = _valid_name(nickname, user_id)
+    valid_card = _valid_name(card, user_id)
     valid_avatar = _asset_url(avatar_url)
     if valid_name:
         updated["nickname"] = valid_name
+    if valid_card:
+        updated["card"] = valid_card
     if valid_avatar:
         updated["avatar_url"] = valid_avatar
     if appid:
@@ -143,10 +150,18 @@ def remember_user_profile(plugin, event) -> None:
         _author_value(author, "display_name")
         or _author_value(author, "global_name")
         or _author_value(author, "username")
+        or _author_value(author, "nickname")
         or _author_value(author, "name")
         or getattr(sender, "nickname", "")
         or event.get_sender_name()
     )
+    card = ""
+    if is_qq_official_event(event):
+        card = (
+            _author_value(author, "card")
+            or _author_value(author, "group_card")
+            or getattr(sender, "card", "")
+        )
     avatar_url = (
         _asset_url(getattr(author, "display_avatar", None), size=512)
         or _asset_url(getattr(author, "avatar", None), size=512)
@@ -154,14 +169,32 @@ def remember_user_profile(plugin, event) -> None:
         or _author_value(author, "avatar")
     )
     appid = _resolve_appid(plugin, event) if is_qq_official_event(event) else ""
-    if _remember_profile(
+    changed = _remember_profile(
         plugin,
         event,
         user_id,
         nickname=nickname,
+        card=card,
         avatar_url=avatar_url,
         appid=appid,
-    ):
+    )
+    if is_qq_official_event(event):
+        # botpy can omit fields that are still present in its preserved payload.
+        raw = getattr(event.message_obj, "raw_message", None)
+        raw_data = raw if isinstance(raw, dict) else getattr(raw, "raw_data", None)
+        mentions = raw_data.get("mentions") if isinstance(raw_data, dict) else None
+        if not isinstance(mentions, (list, tuple)):
+            mentions = getattr(raw, "mentions", None) or []
+        for member in mentions:
+            member_id = _author_value(member, "member_openid") or _author_value(member, "id")
+            if not member_id:
+                continue
+            changed = _remember_profile(
+                plugin, event, member_id,
+                nickname=_author_value(member, "username") or _author_value(member, "nickname"),
+                card=_author_value(member, "card") or _author_value(member, "group_card"),
+            ) or changed
+    if changed:
         _save_profiles(plugin)
 
 
@@ -280,9 +313,17 @@ async def get_platform_group_name(event, fallback: str = "未命名群聊") -> s
 
 def get_display_name(plugin, event, user_id: str, fallback: str | None = None) -> str:
     user_id = str(user_id)
+    if is_qq_official_event(event):
+        # Command handlers may execute before track_active caches this event.
+        remember_user_profile(plugin, event)
     if is_qq_official_event(event) or is_discord_event(event) or is_telegram_event(event):
+        profile = _group_profiles(plugin, event).get(user_id, {})
+        if is_qq_official_event(event):
+            card = _valid_name(profile.get("card"), user_id)
+            if card:
+                return card
         nickname = _valid_name(
-            _group_profiles(plugin, event).get(user_id, {}).get("nickname"), user_id
+            profile.get("nickname"), user_id
         )
         if nickname:
             return nickname
@@ -367,23 +408,45 @@ def qq_official_draw_result(
     event, user_id: str, text: str, avatar_url: str | None,
     *, suffix: str = "", wife_id: str | None = None,
 ):
-    """Keep the draw's text/image order in one QQ Official Markdown message."""
+    """Arrange draw content; the shared formatter handles platform details."""
     import astrbot.api.message_components as Comp
 
-    def escape_text(value: str) -> str:
-        return re.sub(r"([\\`*_{}\[\]()#+\-.!|>~<])", r"\\\1", value)
-
-    chain = [Comp.At(qq=user_id), Comp.Plain(escape_text(text))]
+    chain = [Comp.At(qq=user_id), Comp.Plain(text)]
     if wife_id:
         chain.extend([Comp.At(qq=wife_id), Comp.Plain(" ")])
     if avatar_url:
-        # An Image component would switch AstrBot to msg_type=7 and move the
-        # picture above the text. Embed the public URL in Markdown instead.
-        url = quote(avatar_url, safe=":/?&=%+#@!$*,;~-._")
-        chain.append(Comp.Plain(f"\n\n![avatar #224px #224px]({url})\n\n"))
+        chain.append(avatar_image(avatar_url))
     if suffix:
-        chain.append(Comp.Plain(escape_text(suffix)))
-    result = event.chain_result(chain)
+        chain.append(Comp.Plain(suffix))
+    return platform_result(event, chain)
+
+
+def platform_result(event, chain):
+    """Build replies with explicit Markdown for QQ Official mention chains."""
+    import astrbot.api.message_components as Comp
+
+    if not is_qq_official_event(event):
+        return event.chain_result(platform_chain(event, chain))
+
+    formatted = []
+    for component in chain:
+        if isinstance(component, Comp.Plain):
+            text = re.sub(r"([\\`*_{}\[\]()#+\-.!|>~<])", r"\\\1", component.text)
+            formatted.append(Comp.Plain(text))
+        elif isinstance(component, Comp.Image):
+            source = component.url or component.file or ""
+            if source.startswith(("https://", "http://")):
+                # Image components switch the official adapter to rich media.
+                # Markdown URLs retain the requested text/image order.
+                url = quote(source, safe=":/?&=%+#@!$*,;~-._")
+                formatted.append(Comp.Plain(f"\n\n![avatar #224px #224px]({url})\n\n"))
+            else:
+                formatted.append(component)
+        else:
+            # Keep At as a component so its platform identifier is not escaped
+            # as ordinary text by the Markdown formatter.
+            formatted.append(component)
+    result = event.chain_result(formatted)
     result.use_markdown_ = True
     result.use_t2i_ = False
     return result

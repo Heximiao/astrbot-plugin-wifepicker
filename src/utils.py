@@ -58,8 +58,24 @@ def normalize_user_id_set(values: object) -> set[str]:
     return {str(v) for v in values if str(v).strip()}
 
 
+def match_qq_official_target_command(event: AstrMessageEvent) -> str | None:
+    """Recognize official commands whose textual mention has no separating space."""
+    from .platforms.user_profiles import is_qq_official_event
+
+    if not is_qq_official_event(event):
+        return None
+    match = re.match(
+        r"^\s*/?(强娶|qiangqu|forcemarry|求婚|qh|propose)(?=<@!?[A-Za-z0-9_-]+>)",
+        str(getattr(event, "message_str", "") or ""),
+    )
+    if match is None:
+        return None
+    return "force_marry" if match[1] in {"强娶", "qiangqu", "forcemarry"} else "propose_command"
+
+
 def extract_target_id_from_message(event: AstrMessageEvent, plugin=None) -> str | None:
     from .platforms.telegram_support import is_telegram_event, resolve_target
+    from .platforms.user_profiles import is_qq_official_event
 
     if is_telegram_event(event):
         return resolve_target(plugin, event) if plugin is not None else None
@@ -71,6 +87,22 @@ def extract_target_id_from_message(event: AstrMessageEvent, plugin=None) -> str 
             qq = str(component.qq)
             if qq:
                 mentions.append(qq)
+
+    if is_qq_official_event(event):
+        # Official adapters can leave user mentions as text instead of At
+        # components. Include them before filtering the command's bot mention.
+        raw = getattr(event.message_obj, "raw_message", None)
+        content = raw.get("content", "") if isinstance(raw, dict) else getattr(raw, "content", "")
+        texts = [getattr(event, "message_str", ""), content]
+        texts.extend(
+            component.text
+            for component in getattr(event.message_obj, "message", [])
+            if isinstance(component, Comp.Plain)
+        )
+        for text in texts:
+            for target in re.findall(r"<@!?([A-Za-z0-9_-]+)>", str(text or "")):
+                if target not in mentions:
+                    mentions.append(target)
 
     if mentions:
         for qq in mentions:

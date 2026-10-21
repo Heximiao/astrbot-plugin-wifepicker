@@ -11,7 +11,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
-from .src.platforms.user_profiles import mention_user, avatar_image, platform_chain
+from .src.platforms.user_profiles import mention_user, avatar_image, platform_result
 from .src.platforms.telegram_support import is_telegram_event, self_user_id
 from .keyword_trigger import KeywordRouter, MatchMode
 from .waifu_relations import maybe_add_other_half_record
@@ -38,6 +38,7 @@ from .src.utils import (
     load_json, 
     save_json, 
     extract_target_id_from_message,
+    match_qq_official_target_command,
     is_allowed_group,           # 新增
     resolve_member_name,        # 新增
 )
@@ -192,6 +193,15 @@ class RandomWifePlugin(Star):
             yield result
         if getattr(event, "_wifepicker_breakup_handled", False):
             return
+        # Official mentions may remain text, so CommandFilter sees the command
+        # and <@openid> as one token. Route only this missing-space case here.
+        action = match_qq_official_target_command(event)
+        if action:
+            event.stop_event()
+            record_active(self, event)
+            async for result in self._keyword_handlers[action](event):
+                yield result
+            return
         # 1. 检查开关
         if not self.config.get("keyword_trigger_enabled", False):
             return
@@ -325,7 +335,7 @@ class RandomWifePlugin(Star):
                 ]
                 if wife_avatar:
                     chain.append(avatar_image(wife_avatar))
-                yield event.chain_result(platform_chain(event, chain))
+                yield platform_result(event, chain)
             else:
                 text = tr(self, "daily_limit", count=today_count)
                 if can_onebot_withdraw(self, event):
@@ -489,7 +499,7 @@ class RandomWifePlugin(Star):
         if avatar_url:
             chain.append(avatar_image(avatar_url))
         chain.append(Comp.Plain(suffix_text))
-        yield event.chain_result(platform_chain(event, chain))
+        yield platform_result(event, chain)
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):

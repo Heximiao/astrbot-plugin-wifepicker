@@ -4,7 +4,9 @@ import time
 import astrbot.api.message_components as Comp
 from astrbot.api.event import AstrMessageEvent
 
-from ..platforms.user_profiles import mention_user, avatar_image, platform_chain
+from ..platforms.user_profiles import (
+    mention_user, avatar_image, platform_result,
+)
 from ..platforms.telegram_support import self_user_id
 from ..core import (
     auto_set_other_half_enabled,
@@ -193,4 +195,4 @@ async def cmd_force_marry(
     ]
     if avatar_url:
         chain.append(avatar_image(avatar_url))
-    yield event.chain_result(platform_chain(event, chain))
+    yield platform_result(event, chain)

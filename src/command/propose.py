@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 
 import astrbot.api.message_components as Comp
-from astrbot.api.event import AstrMessageEvent, MessageChain
+from astrbot.api.event import AstrMessageEvent
 
 from ..core import (
     get_force_marry_cooldown_status,
@@ -13,8 +13,9 @@ from ..core import (
     upsert_user_wife_record,
 )
 from .forced_marriage import cmd_force_marry
+from .qq_official.propose_official import send_proposal
 from ..utils import extract_target_id_from_message, resolve_member_name, save_json
-from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_chain
+from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_result
 from ..i18n import format_duration, tr
 from ..debug import debug_log
 
@@ -232,14 +233,14 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     plugin_instance._propose_timeout_tasks.add(task)
     task.add_done_callback(plugin_instance._propose_timeout_tasks.discard)
 
-    yield event.plain_result(
-        tr(
-            plugin_instance,
-            "propose_sent",
-            sender_name=event.get_sender_name(),
-            target_name=target_name,
-        )
+    text = tr(
+        plugin_instance,
+        "propose_sent",
+        sender_name=event.get_sender_name(),
+        target_name=target_name,
     )
+    if not await send_proposal(plugin_instance, event, target_id, text):
+        yield event.plain_result(text)
 
 async def _notify_propose_timeout(plugin_instance, event, group_id, target_id, req):
     await asyncio.sleep(PROPOSE_RESPONSE_SECONDS)
@@ -252,8 +253,7 @@ async def _notify_propose_timeout(plugin_instance, event, group_id, target_id, r
 
     _delete_request(group_id, target_id)
     try:
-        chain_obj = MessageChain()
-        chain_obj.chain = platform_chain(event, [
+        chain_obj = platform_result(event, [
             mention_user(plugin_instance, event, req["proposer_id"]),
             Comp.Plain(text=tr(plugin_instance, "propose_timeout")),
         ])
@@ -398,4 +398,4 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
                     tr(plugin_instance, "propose_rejected", target_name=target_name)
                 ),
             ]
-            yield event.chain_result(platform_chain(event, chain))
+            yield platform_result(event, chain)
