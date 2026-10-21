@@ -43,7 +43,7 @@ from .src.utils import (
     resolve_member_name,        # 新增
 )
 
-from .src.debug import debug_log
+from .src.debug import debug_log, log_command_platform
 from .src.debug_utils import run_debug_graph
 from .src.i18n import tr
 # 新增：导入 core helpers
@@ -197,6 +197,7 @@ class RandomWifePlugin(Star):
         # and <@openid> as one token. Route only this missing-space case here.
         action = match_qq_official_target_command(event)
         if action:
+            log_command_platform(self, event)
             event.stop_event()
             record_active(self, event)
             async for result in self._keyword_handlers[action](event):
@@ -227,6 +228,7 @@ class RandomWifePlugin(Star):
             route = self._keyword_router.match_command_route(message_str)
         if route:
             # 关键词命中后立即停止事件，避免插件回复后继续进入 LLM。
+            log_command_platform(self, event)
             event.stop_event()
             # 记录活跃（既然说话了就要进池子）
             record_active(self, event)
@@ -256,6 +258,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("今日老婆", alias={"抽老婆", "jrlp", "dailywife", "wife"})
     async def draw_wife(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in self._cmd_draw_wife(event):
             yield result
@@ -503,6 +506,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("我的老婆", alias={"抽取历史", "wdlp", "mywife"})
     async def show_history(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in self._cmd_show_history(event):
             yield result
@@ -513,6 +517,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("分手", alias={"fs", "breakup", "离婚"})
     async def breakup(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in self._cmd_breakup(event):
             yield result
@@ -524,6 +529,7 @@ class RandomWifePlugin(Star):
     @filter.command("强娶", alias={"qiangqu", "forcemarry"})
     async def force_marry(self, event: AstrMessageEvent):
         """强娶 + @要娶的那个人"""
+        log_command_platform(self, event)
         event.stop_event()
         async for result in cmd_force_marry(self, event):
             yield result
@@ -534,6 +540,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("关系图", alias={"gxt", "relations"})
     async def show_graph(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in cmd_show_graph(self, event):
             yield result
@@ -544,6 +551,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("rbq排行", alias={"rbqph", "wifeleaderboard"})
     async def rbq_ranking(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in cmd_rbq_ranking(self, event):
             yield result
@@ -551,6 +559,7 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录", alias={"czjl"})
     async def reset_records(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in self._cmd_reset_records(event):
             yield result
@@ -574,6 +583,7 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置强娶时间", alias={"czqqsj"})
     async def reset_force_cd(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in self._cmd_reset_force_cd(event):
             yield result
@@ -593,12 +603,14 @@ class RandomWifePlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置求婚时间", alias={"czqhsj"})
     async def reset_propose_cd(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in cmd_reset_propose_cd(self, event):
             yield result
 
     @filter.command("抽老婆帮助", alias={"老婆插件帮助", "clpbz", "wifehelp"})
     async def show_help(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in cmd_show_help(self, event):
             yield result
@@ -609,6 +621,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("debug_graph")
     async def debug_graph(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         '''
         调试关系图渲染
@@ -619,6 +632,7 @@ class RandomWifePlugin(Star):
         
     @filter.command("求婚", alias={"qh", "propose"})
     async def propose_command(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         # 调用外部的发起求婚逻辑
         async for result in cmd_propose(self, event):
@@ -626,6 +640,7 @@ class RandomWifePlugin(Star):
 
     @filter.command("挑选老婆", alias={"txlp", "pickwife"})
     async def pick_wife(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
         event.stop_event()
         async for result in self._cmd_pick_wife(event):
             yield result

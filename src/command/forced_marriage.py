@@ -173,6 +173,7 @@ async def cmd_force_marry(
 
     avatar_url = await get_avatar_source(plugin_instance, event, target_id)
     result_text = tr(plugin_instance, "force_success", target_name=target_name)
+    suffix_text = tr(plugin_instance, "force_success_suffix")
     if can_onebot_withdraw(plugin_instance, event):
         message_id = await send_onebot_message(
             plugin_instance,
@@ -181,6 +182,7 @@ async def cmd_force_marry(
                 {"type": "at", "data": {"qq": user_id}},
                 {"type": "text", "data": {"text": result_text}},
                 {"type": "image", "data": {"file": avatar_url}},
+                {"type": "text", "data": {"text": suffix_text}},
             ],
         )
         if message_id is not None:
@@ -195,4 +197,5 @@ async def cmd_force_marry(
     ]
     if avatar_url:
         chain.append(avatar_image(avatar_url))
+    chain.append(Comp.Plain(suffix_text))
     yield platform_result(event, chain)

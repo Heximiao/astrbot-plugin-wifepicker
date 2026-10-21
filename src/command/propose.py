@@ -14,7 +14,7 @@ from ..core import (
 )
 from .forced_marriage import cmd_force_marry
 from .qq_official.propose_official import send_proposal
-from ..utils import extract_target_id_from_message, resolve_member_name, save_json
+from ..utils import extract_target_id_from_message, is_allowed_group, resolve_member_name, save_json
 from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_result
 from ..i18n import format_duration, tr
 from ..debug import debug_log
@@ -148,6 +148,8 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
 
     user_id = str(event.get_sender_id())
     group_id = str(event.get_group_id())
+    if not is_allowed_group(group_id, plugin_instance.config):
+        return
     target_id = extract_target_id_from_message(event, plugin_instance)
 
     debug_log(plugin_instance, "propose", f"target group={group_id} proposer={user_id} target={target_id}")
@@ -249,6 +251,10 @@ async def _notify_propose_timeout(plugin_instance, event, group_id, target_id, r
         debug_log(plugin_instance, "propose", f"timeout_skipped group={group_id} proposer={req['proposer_id']} target={target_id} reason=request_removed_or_replaced")
         return
 
+    if not is_allowed_group(group_id, plugin_instance.config):
+        _delete_request(group_id, target_id)
+        return
+
     debug_log(plugin_instance, "propose", f"timeout group={group_id} proposer={req['proposer_id']} target={target_id}")
 
     _delete_request(group_id, target_id)
@@ -268,6 +274,10 @@ async def _notify_propose_timeout(plugin_instance, event, group_id, target_id, r
 async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
     """处理求婚回复和拒绝后的强娶确认。"""
     group_id = str(event.get_group_id())
+    if not is_allowed_group(group_id, plugin_instance.config):
+        propose_requests.pop(group_id, None)
+        force_confirm_requests.pop(group_id, None)
+        return
     user_id = str(event.get_sender_id())
     msg = event.message_str.strip()
 
