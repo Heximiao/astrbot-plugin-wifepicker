@@ -13,7 +13,7 @@ from ..core import (
     upsert_user_wife_record,
 )
 from .forced_marriage import cmd_force_marry
-from .qq_official.propose_official import send_proposal
+from .qq_official.propose_official import send_proposal, send_force_confirmation
 from ..utils import extract_target_id_from_message, is_allowed_group, resolve_member_name, save_json
 from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_result
 from ..i18n import format_duration, tr
@@ -402,10 +402,11 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
 
             debug_log(plugin_instance, "propose", f"rejected group={group_id} proposer={proposer_id} target={user_id} force_confirm_seconds={FORCE_CONFIRM_SECONDS}")
             event.stop_event()
+            text = tr(plugin_instance, "propose_rejected", target_name=target_name)
+            if await send_force_confirmation(plugin_instance, event, proposer_id, text):
+                return
             chain = [
                 mention_user(plugin_instance, event, proposer_id),
-                Comp.Plain(
-                    tr(plugin_instance, "propose_rejected", target_name=target_name)
-                ),
+                Comp.Plain(text),
             ]
             yield platform_result(event, chain)

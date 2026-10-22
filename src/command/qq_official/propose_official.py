@@ -15,19 +15,39 @@ def build_keyboard(target_id: str, *, accept: str, reject: str) -> dict:
     ]}]}}
 
 
-async def send_proposal(plugin, event, target_id: str, text: str) -> bool:
-    """Show a Markdown invitation, falling back to the original text on failure."""
+async def _send_menu(event, user_id: str, text: str, keyboard: dict) -> bool:
+    """Send a menu, leaving the caller's original reply as the fallback."""
     if not is_official_group(event):
         return False
     try:
         await post_markdown(
-            event, f'<qqbot-at-user id="{target_id}" />\n\n{escape_markdown(text)}',
-            keyboard=build_keyboard(
-                target_id, accept=tr(plugin, "propose_button_accept"),
-                reject=tr(plugin, "propose_button_reject"),
-            ),
+            event, f'<qqbot-at-user id="{user_id}" />\n\n{escape_markdown(text)}',
+            keyboard=keyboard,
         )
     except Exception as exc:
-        logger.warning(f"[wifepicker] 官机求婚按钮发送失败，回退文字邀请: {exc}")
+        logger.warning(f"[wifepicker] 官机求婚交互按钮发送失败，回退文字提示: {exc}")
         return False
     return True
+
+
+async def send_proposal(plugin, event, target_id: str, text: str) -> bool:
+    """Only the proposal recipient may accept or reject."""
+    return await _send_menu(event, target_id, text, build_keyboard(
+        target_id, accept=tr(plugin, "propose_button_accept"),
+        reject=tr(plugin, "propose_button_reject"),
+    ))
+
+
+async def send_force_confirmation(plugin, event, proposer_id: str, text: str) -> bool:
+    """Only the proposer may choose whether to continue after rejection."""
+    keyboard = {"content": {"rows": [{"buttons": [
+        command_button(
+            "force_confirm", proposer_id, "是", tr(plugin, "force_button_confirm"),
+            tips="请回复是或取消",
+        ),
+        command_button(
+            "force_abandon", proposer_id, "取消", tr(plugin, "force_button_abandon"),
+            tips="请回复是或取消",
+        ),
+    ]}]}}
+    return await _send_menu(event, proposer_id, text, keyboard)
