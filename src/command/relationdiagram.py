@@ -5,6 +5,8 @@ from astrbot.api.event import AstrMessageEvent
 
 from ..core import get_group_records
 from ..utils import is_allowed_group
+from ..debug import debug_log
+from ..i18n import tr
 from ..platforms.user_profiles import (
     get_avatar_sources,
     get_display_name,
@@ -44,11 +46,11 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
     # 2. 获取当前群的今日关系记录
     group_data = get_group_records(plugin_instance, group_id)
 
-    group_name = "未命名群聊"
+    group_name = tr(plugin_instance, "proposal_image_group")
     user_map = {}
     avatar_map = {}
     try:
-        group_name = await get_platform_group_name(event, group_name)
+        group_name = await get_platform_group_name(event, group_name, plugin=plugin_instance)
         members = await get_platform_members(plugin_instance, event)
         for member in members:
             uid = str(member.get("user_id"))
@@ -57,6 +59,8 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
 
     except Exception as e:
         logger.warning(f"获取群组或成员信息失败: {e}")
+
+    debug_log(plugin_instance, "relationdiagram", f"group={group_id} group_name={group_name!r}")
 
     # 3. 渲染图片
     # 根据节点数量动态计算高度，避免拥挤

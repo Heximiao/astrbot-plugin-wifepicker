@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px; width: 540px;
+      background: #f4eadc; color: #30291e;
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+    .poster {
+      width: 508px; background: #fff8ed; overflow: hidden;
+      border: 1px solid #e5d7c3; border-radius: 22px;
+    }
+    .header {
+      height: 200px; padding: 26px 28px 20px; position: relative;
+      background: radial-gradient(circle at 100% 0%, #fbd9c1, transparent 65%);
+    }
+    .eyebrow { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; letter-spacing: 2px; color: #4f674b; font-weight: 700; }
+    .letter { position: absolute; right: 24px; top: 48px; font-size: 72px; transform: rotate(15deg); opacity: .19; }
+    .heart { position: absolute; right: 98px; top: 50px; color: #df572c; font-size: 25px; transform: rotate(-15deg); opacity: .3; }
+    h1 { position: relative; margin: 22px 0 10px; font-size: 38px; line-height: 1.25; letter-spacing: -1px; font-weight: 900; white-space: nowrap; color: #c74d27; }
+    .tagline { position: relative; margin: 0; color: #796b57; font-size: 13px; line-height: 20px; }
+    .meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 19px; padding-top: 12px; border-top: 1px dashed #e5d7c3; color: #796b57; font-size: 11px; }
+    .group { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 700; }
+    .period { flex: none; }
+    .winner { position: relative; height: 218px; margin: 0 22px; padding: 20px; border: 1px solid #e5d7c3; border-radius: 15px; background: #fcebdc; }
+    .winner-label { padding-right: 90px; font-size: 12px; font-weight: 800; line-height: 20px; letter-spacing: 1px; color: #c74d27; }
+    .stamp { position: absolute; right: 17px; top: 16px; padding: 5px 7px; border: 2px solid #df572c; border-radius: 4px; color: #c74d27; font-size: 11px; font-weight: 800; line-height: 16px; letter-spacing: 2px; transform: rotate(9deg); }
+    .winner-person { display: flex; align-items: center; gap: 12px; height: 52px; margin: 18px 0; }
+    .avatar { width: 36px; height: 36px; position: relative; overflow: hidden; border-radius: 50%; border: 1px solid #e5d7c3; background: #f4e2cc; display: flex; align-items: center; justify-content: center; flex: none; font-size: 15px; font-weight: 700; color: #796b57; }
+    .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .winner .avatar { width: 52px; height: 52px; font-size: 22px; background: #fff8ed; }
+    .person { min-width: 0; flex: 1; }
+    .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; line-height: 24px; }
+    .winner .name { font-size: 18px; }
+    .quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 5px; color: #796b57; font-size: 12px; line-height: 20px; }
+    .winner-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 15px; border-top: 1px dashed #e5d7c3; }
+    .metric { display: flex; align-items: baseline; gap: 8px; }
+    .metric strong { font-family: Georgia, serif; font-size: 38px; line-height: 42px; font-variant-numeric: tabular-nums; }
+    .metric span { font-size: 11px; color: #796b57; white-space: nowrap; }
+    .list-head { display: grid; grid-template-columns: 1fr 76px 76px; gap: 8px; align-items: end; height: 48px; margin: 0 22px; padding: 0 8px 10px; font-size: 11px; color: #796b57; }
+    .list-head span:not(:first-child) { text-align: right; }
+    .row { display: grid; grid-template-columns: 22px 36px minmax(0, 1fr) 76px 76px; gap: 8px; align-items: center; height: 70px; margin: 0 22px; padding: 0 8px; border-bottom: 1px solid #e5d7c3; }
+    .rank { font-family: Georgia, serif; font-style: italic; font-size: 14px; color: #796b57; }
+    .count { text-align: right; font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .count small { margin-left: 3px; font-size: 11px; color: #796b57; font-weight: 400; }
+    .footer { height: 94px; padding: 22px 18px 0; text-align: center; }
+    .signoff { font-size: 12px; line-height: 22px; color: #4f674b; font-weight: 700; }
+    .imprint { margin-top: 9px; font-size: 11px; line-height: 18px; letter-spacing: 1px; color: #796b57; }
+  </style>
+</head>
+<body>
+  <main class="poster">
+    <header class="header">
+      <div class="eyebrow"><span>{{ labels.eyebrow | e }}</span><span>LOVE REPORT</span></div>
+      <span class="letter">💌</span><span class="heart">♡</span>
+      <h1>{{ labels.title | e }}</h1>
+      <p class="tagline">{{ labels.tagline | e }}</p>
+      <div class="meta"><span class="group">{{ group_name | e }}</span><span class="period">{{ labels.period | e }}</span></div>
+    </header>
+    <section class="winner">
+      <div class="winner-label">👑 {{ labels.winner | e }}</div><span class="stamp">{{ labels.stamp | e }}</span>
+      <div class="winner-person">
+        <div class="avatar"><span>{{ winner.name[:1] | e }}</span>{% if winner.avatar_url %}<img src="{{ winner.avatar_url | e }}" onerror="this.remove()">{% endif %}</div>
+        <div class="person"><div class="name">{{ winner.name | e }}</div><div class="quote">{{ winner_quote | e }}</div></div>
+      </div>
+      <div class="winner-counts">
+        <div class="metric"><strong>{{ winner.proposal_count }}</strong><span>{{ labels.proposals | e }} / {{ labels.unit | e }}</span></div>
+        <div class="metric"><strong>{{ winner.success_count }}</strong><span>{{ labels.successes | e }} / {{ labels.unit | e }}</span></div>
+      </div>
+    </section>
+    {% if others %}
+    <div class="list-head"><span>{{ labels.players | e }}</span><span>{{ labels.proposals | e }}</span><span>{{ labels.successes | e }}</span></div>
+    {% for user in others %}
+    <div class="row">
+      <span class="rank">{{ '%02d' | format(user.rank) }}</span>
+      <div class="avatar"><span>{{ user.name[:1] | e }}</span>{% if user.avatar_url %}<img src="{{ user.avatar_url | e }}" onerror="this.remove()">{% endif %}</div>
+      <div class="person"><div class="name">{{ user.name | e }}</div></div>
+      <div class="count">{{ user.proposal_count }}<small>{{ labels.unit | e }}</small></div>
+      <div class="count">{{ user.success_count }}<small>{{ labels.unit | e }}</small></div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    <footer class="footer"><div class="signoff">♡ {{ labels.signoff | e }}</div><div class="imprint">WIFE PICKER · {{ labels.imprint | e }}</div></footer>
+  </main>
+</body>
+</html>

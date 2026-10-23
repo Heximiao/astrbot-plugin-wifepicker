@@ -277,10 +277,19 @@ async def get_platform_members(plugin, event) -> list[dict]:
     return normalized
 
 
-async def get_platform_group_name(event, fallback: str = "未命名群聊") -> str:
+async def get_platform_group_name(event, fallback: str = "未命名群聊", *, plugin=None) -> str:
     platform = _platform_name(event)
     group_id = str(event.get_group_id() or "")
     try:
+        if is_qq_official_event(event):
+            from .qq_official_groups import get_official_group_name
+
+            log = None
+            if plugin is not None:
+                from ..debug import debug_log
+
+                log = lambda message: debug_log(plugin, "group_name", message)
+            return await get_official_group_name(event, fallback, debug=log)
         if is_telegram_event(event):
             from .telegram_support import telegram_message, value
 

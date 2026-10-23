@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 
 import astrbot.api.message_components as Comp
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from ..core import (
@@ -18,6 +19,7 @@ from ..utils import extract_target_id_from_message, is_allowed_group, resolve_me
 from ..platforms.user_profiles import get_display_name, get_platform_members, mention_user, platform_result
 from ..i18n import format_duration, tr
 from ..debug import debug_log
+from ..db import proposal_scope
 
 # 群内待处理的求婚请求
 propose_requests = {}
@@ -27,6 +29,33 @@ force_confirm_requests = {}
 
 PROPOSE_RESPONSE_SECONDS = 30
 FORCE_CONFIRM_SECONDS = 30
+
+
+async def _record_proposal(plugin, event, req, target_id):
+    store = getattr(plugin, "proposal_store", None)
+    if store is None:
+        return
+    try:
+        req["proposal_id"] = await store.create(
+            proposal_scope(event), req["proposer_id"], target_id,
+            req["proposer_name"], req["target_name"], now=req["created_at"],
+        )
+    except Exception as exc:
+        logger.error(f"[wifepicker] 保存求婚统计失败: {exc}")
+
+
+async def _resolve_proposal(plugin, req, status):
+    task = req.get("stats_task")
+    if task is not None:
+        await asyncio.shield(task)
+    request_id = req.get("proposal_id")
+    store = getattr(plugin, "proposal_store", None)
+    if not request_id or store is None:
+        return
+    try:
+        await store.resolve(request_id, status)
+    except Exception as exc:
+        logger.error(f"[wifepicker] 更新求婚统计失败: id={request_id}, error={exc}")
 
 
 def _cleanup_expired_requests(group_id: str) -> None:
@@ -213,6 +242,7 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
     if group_id not in propose_requests:
         propose_requests[group_id] = {}
 
+    old_req = propose_requests[group_id].get(target_id)
     propose_requests[group_id][target_id] = {
         "proposer_id": user_id,
         "proposer_name": get_display_name(
@@ -222,12 +252,21 @@ async def cmd_propose(plugin_instance, event: AstrMessageEvent):
             fallback=event.get_sender_name() or f"用户({user_id})",
         ),
         "target_name": target_name,
+        "created_at": now,
         "expire": now + PROPOSE_RESPONSE_SECONDS,
         "umo": event.unified_msg_origin,
     }
 
     # 在 yield 前启动计时，避免 stop_event 导致生成器不再恢复。
     req = propose_requests[group_id][target_id]
+    req["stats_task"] = asyncio.create_task(
+        _record_proposal(plugin_instance, event, req, target_id)
+    )
+    plugin_instance._propose_timeout_tasks.add(req["stats_task"])
+    req["stats_task"].add_done_callback(plugin_instance._propose_timeout_tasks.discard)
+    await asyncio.shield(req["stats_task"])
+    if old_req:
+        await _resolve_proposal(plugin_instance, old_req, "cancelled")
     debug_log(plugin_instance, "propose", f"request_created group={group_id} proposer={user_id} target={target_id} target_name={target_name} expire={req['expire']} timeout_seconds={PROPOSE_RESPONSE_SECONDS}")
     task = asyncio.create_task(
         _notify_propose_timeout(plugin_instance, event, group_id, target_id, req)
@@ -253,11 +292,13 @@ async def _notify_propose_timeout(plugin_instance, event, group_id, target_id, r
 
     if not is_allowed_group(group_id, plugin_instance.config):
         _delete_request(group_id, target_id)
+        await _resolve_proposal(plugin_instance, req, "cancelled")
         return
 
     debug_log(plugin_instance, "propose", f"timeout group={group_id} proposer={req['proposer_id']} target={target_id}")
 
     _delete_request(group_id, target_id)
+    await _resolve_proposal(plugin_instance, req, "expired")
     try:
         chain_obj = platform_result(event, [
             mention_user(plugin_instance, event, req["proposer_id"]),
@@ -275,8 +316,10 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
     """处理求婚回复和拒绝后的强娶确认。"""
     group_id = str(event.get_group_id())
     if not is_allowed_group(group_id, plugin_instance.config):
-        propose_requests.pop(group_id, None)
+        removed = propose_requests.pop(group_id, {})
         force_confirm_requests.pop(group_id, None)
+        for req in removed.values():
+            await _resolve_proposal(plugin_instance, req, "cancelled")
         return
     user_id = str(event.get_sender_id())
     msg = event.message_str.strip()
@@ -311,6 +354,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
         if _is_request_expired(req):
             debug_log(plugin_instance, "propose", f"response_expired group={group_id} target={user_id}")
             _delete_request(group_id, user_id)
+            await _resolve_proposal(plugin_instance, req, "expired")
             return
 
         if msg.lower() in ["同意求婚", "我同意", "同意", "accept", "yes", "同意します"]:
@@ -327,6 +371,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             if proposer_force_cd or target_force_cd:
                 debug_log(plugin_instance, "propose", f"accept_invalid group={group_id} proposer={proposer_id} target={user_id} proposer_force_cd={proposer_force_cd} target_force_cd={target_force_cd}")
                 _delete_requests_by_proposer(group_id, proposer_id)
+                await _resolve_proposal(plugin_instance, req, "cancelled")
                 yield event.plain_result(tr(plugin_instance, "propose_invalid"))
                 return
 
@@ -375,6 +420,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             )
 
             _delete_requests_by_proposer(group_id, proposer_id)
+            await _resolve_proposal(plugin_instance, req, "accepted")
             debug_log(plugin_instance, "propose", f"accepted group={group_id} proposer={proposer_id} target={user_id} daily_limit={daily_limit} proposer_records={sum(r['user_id'] == proposer_id for r in group_records)} target_records={sum(r['user_id'] == user_id for r in group_records)}")
 
             event.stop_event()
@@ -390,6 +436,7 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             proposer_id = req["proposer_id"]
             target_name = req["target_name"]
             _delete_request(group_id, user_id)
+            await _resolve_proposal(plugin_instance, req, "rejected")
 
             if group_id not in force_confirm_requests:
                 force_confirm_requests[group_id] = {}

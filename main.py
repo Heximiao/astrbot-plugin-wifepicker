@@ -23,6 +23,8 @@ from .src.command.pick_wife import cmd_pick_wife, handle_pick_response, has_pend
 from .src.command.propose import cmd_propose, handle_propose_response
 from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
+from .src.command.proposal_rank import cmd_proposal_ranking
+from .src.db import ProposalStore
 from .src.command.reset_propose_cd import cmd_reset_propose_cd
 from .src.platforms.user_profiles import (
     get_avatar_source,
@@ -138,6 +140,14 @@ class RandomWifePlugin(Star):
         
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir, exist_ok=True)
+
+        self.proposal_store = None
+        self._proposal_cleanup_task = None
+        try:
+            self.proposal_store = ProposalStore(os.path.join(self.data_dir, "wifepicker.db"))
+            self._proposal_cleanup_task = asyncio.create_task(self._proposal_cleanup_loop())
+        except Exception as exc:
+            logger.error(f"求婚统计数据库初始化失败: {exc}")
             
         self.records = load_json(self.records_file, {"date": "", "groups": {}})
         self.active_users = load_json(self.active_file, {})
@@ -162,6 +172,7 @@ class RandomWifePlugin(Star):
             "force_marry": self._cmd_force_marry,
             "show_graph": self._cmd_show_graph,
             "rbq_ranking": self.rbq_ranking,
+            "proposal_ranking": self.proposal_ranking,
             "show_help": self._cmd_show_help,
             "reset_records": self._cmd_reset_records,
             "reset_force_cd": self._cmd_reset_force_cd,
@@ -556,6 +567,13 @@ class RandomWifePlugin(Star):
         async for result in cmd_rbq_ranking(self, event):
             yield result
 
+    @filter.command("花心大萝卜榜", alias={"海王榜","花心榜","hxb","hxdlbb","hwb"})
+    async def proposal_ranking(self, event: AstrMessageEvent):
+        log_command_platform(self, event)
+        event.stop_event()
+        async for result in cmd_proposal_ranking(self, event):
+            yield result
+
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("重置记录", alias={"czjl"})
     async def reset_records(self, event: AstrMessageEvent):
@@ -649,7 +667,18 @@ class RandomWifePlugin(Star):
         async for result in cmd_pick_wife(self, event):
             yield result
 
+    async def _proposal_cleanup_loop(self):
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                await self.proposal_store.cleanup()
+            except Exception as exc:
+                logger.error(f"清理过期求婚统计失败: {exc}")
+
     async def terminate(self):
+        if self._proposal_cleanup_task is not None:
+            self._proposal_cleanup_task.cancel()
+            await asyncio.gather(self._proposal_cleanup_task, return_exceptions=True)
         for task in tuple(self._propose_timeout_tasks):
             task.cancel()
         if self._propose_timeout_tasks:

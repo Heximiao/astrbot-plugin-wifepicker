@@ -23,6 +23,12 @@ _DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
     
     KeywordRoute(keyword="rbq排行", action="rbq_ranking"),
     KeywordRoute(keyword="rbqph", action="rbq_ranking"),
+    KeywordRoute(keyword="花心大萝卜榜", action="proposal_ranking"),
+    KeywordRoute(keyword="海王榜", action="proposal_ranking"),
+    KeywordRoute(keyword="花心榜", action="proposal_ranking"),
+    KeywordRoute(keyword="hxb", action="proposal_ranking"),
+    KeywordRoute(keyword="hxdlbb", action="proposal_ranking"),
+    KeywordRoute(keyword="hwb", action="proposal_ranking"),
     
     KeywordRoute(keyword="抽老婆帮助", action="show_help"),
     KeywordRoute(keyword="老婆插件帮助", action="show_help"),
