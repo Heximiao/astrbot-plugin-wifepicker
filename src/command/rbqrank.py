@@ -6,6 +6,7 @@ from astrbot.api.event import AstrMessageEvent
 from ..core import clean_rbq_stats
 from ..platforms.user_profiles import get_avatar_sources, get_display_name, get_platform_members
 from ..i18n import tr
+from ..utils import is_allowed_group
 
 
 async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
@@ -14,6 +15,8 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
         return
 
     group_id = str(event.get_group_id())
+    if not is_allowed_group(group_id, plugin_instance.config):
+        return
     clean_rbq_stats(plugin_instance)
 
     group_data = plugin_instance.rbq_stats.get(group_id, {})

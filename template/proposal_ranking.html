@@ -2,10 +2,13 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=540, height=1, initial-scale=1">
   <style>
     * { box-sizing: border-box; }
+    html { width: 540px; height: auto; min-height: 0; overflow: visible; }
     body {
       margin: 0; padding: 16px; width: 540px;
+      height: auto; min-height: 0; overflow: visible;
       background: #f4eadc; color: #30291e;
       font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
@@ -14,7 +17,7 @@
       border: 1px solid #e5d7c3; border-radius: 22px;
     }
     .header {
-      height: 200px; padding: 26px 28px 20px; position: relative;
+      min-height: 200px; padding: 26px 28px 20px; position: relative;
       background: radial-gradient(circle at 100% 0%, #fbd9c1, transparent 65%);
     }
     .eyebrow { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; letter-spacing: 2px; color: #4f674b; font-weight: 700; }
@@ -25,7 +28,7 @@
     .meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 19px; padding-top: 12px; border-top: 1px dashed #e5d7c3; color: #796b57; font-size: 11px; }
     .group { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 700; }
     .period { flex: none; }
-    .winner { position: relative; height: 218px; margin: 0 22px; padding: 20px; border: 1px solid #e5d7c3; border-radius: 15px; background: #fcebdc; }
+    .winner { position: relative; min-height: 218px; margin: 0 22px; padding: 20px; border: 1px solid #e5d7c3; border-radius: 15px; background: #fcebdc; }
     .winner-label { padding-right: 90px; font-size: 12px; font-weight: 800; line-height: 20px; letter-spacing: 1px; color: #c74d27; }
     .stamp { position: absolute; right: 17px; top: 16px; padding: 5px 7px; border: 2px solid #df572c; border-radius: 4px; color: #c74d27; font-size: 11px; font-weight: 800; line-height: 16px; letter-spacing: 2px; transform: rotate(9deg); }
     .winner-person { display: flex; align-items: center; gap: 12px; height: 52px; margin: 18px 0; }
@@ -42,11 +45,11 @@
     .metric span { font-size: 11px; color: #796b57; white-space: nowrap; }
     .list-head { display: grid; grid-template-columns: 1fr 76px 76px; gap: 8px; align-items: end; height: 48px; margin: 0 22px; padding: 0 8px 10px; font-size: 11px; color: #796b57; }
     .list-head span:not(:first-child) { text-align: right; }
-    .row { display: grid; grid-template-columns: 22px 36px minmax(0, 1fr) 76px 76px; gap: 8px; align-items: center; height: 70px; margin: 0 22px; padding: 0 8px; border-bottom: 1px solid #e5d7c3; }
+    .row { display: grid; grid-template-columns: 22px 36px minmax(0, 1fr) 76px 76px; gap: 8px; align-items: center; min-height: 70px; margin: 0 22px; padding: 14px 8px; border-bottom: 1px solid #e5d7c3; }
     .rank { font-family: Georgia, serif; font-style: italic; font-size: 14px; color: #796b57; }
     .count { text-align: right; font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
     .count small { margin-left: 3px; font-size: 11px; color: #796b57; font-weight: 400; }
-    .footer { height: 94px; padding: 22px 18px 0; text-align: center; }
+    .footer { min-height: 94px; padding: 22px 18px; text-align: center; }
     .signoff { font-size: 12px; line-height: 22px; color: #4f674b; font-weight: 700; }
     .imprint { margin-top: 9px; font-size: 11px; line-height: 18px; letter-spacing: 1px; color: #796b57; }
   </style>

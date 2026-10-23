@@ -79,15 +79,15 @@ async def cmd_proposal_ranking(plugin, event: AstrMessageEvent):
         template_path = os.path.join(plugin.curr_dir, "template", "proposal_ranking.html")
         with open(template_path, encoding="utf-8") as template:
             template_content = template.read()
-        # Match the template's fixed sections and 70px rows exactly.
-        height = 546 + (48 + 70 * (len(ranking) - 1) if len(ranking) > 1 else 0)
         url = await plugin.html_render(
             template_content,
             {"winner": ranking[0], "others": ranking[1:], "group_name": group_name,
              "labels": labels, "winner_quote": quote},
             options={
-                "type": "png", "quality": None, "full_page": False,
-                "clip": {"x": 0, "y": 0, "width": 540, "height": height},
+                # Let the renderer measure the whole document. A short initial
+                # viewport avoids adding blank space below a small leaderboard.
+                "type": "png", "quality": None, "full_page": True,
+                "viewport_width": 540, "viewport_height": 1,
                 "scale": "device", "device_scale_factor_level": "ultra",
             },
         )

@@ -1,6 +1,7 @@
 """Best-effort QQ Official group names, including older botpy versions."""
 
 import asyncio
+import importlib
 import logging
 import time
 
@@ -32,9 +33,9 @@ async def _request_group_info(api, group_id):
         return None
     # qq-botpy 1.2.1 has no convenience method for this endpoint. Reuse its
     # authenticated HTTP client instead of managing tokens in the plugin.
-    from botpy.http import Route
+    route_type = importlib.import_module("botpy.http").Route
 
-    return await http.request(Route("GET", "/v2/groups/{group_openid}/info", group_openid=group_id))
+    return await http.request(route_type("GET", "/v2/groups/{group_openid}/info", group_openid=group_id))
 
 
 async def get_official_group_name(event, fallback, *, debug=None):

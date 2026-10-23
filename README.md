@@ -1,6 +1,6 @@
 # 🌸 AstrBot 活跃成员抽老婆插件
 
-![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.5.1-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
+![Latest Version](https://img.shields.io/badge/LATEST%20VERSION-v3.5.5-7ec8e3?style=for-the-badge&labelColor=4a4a4a)
 ![AstrBot Plugin](https://img.shields.io/badge/ASTRBOT-PLUGIN-ff69b4?style=for-the-badge&labelColor=4a4a4a)
 ![License](https://img.shields.io/badge/LICENSE-AGPL--3.0-78c800?style=for-the-badge&labelColor=4a4a4a)
 
@@ -41,7 +41,6 @@
 > **关于 @ 的使用：**
 > 使用强娶并 @ 对方时，请**长按对方头像 @**，或输入@后点击输入框上方弹出的成员列表。不要手动输入 `@名字` 或复制黏贴文字，否则插件无法获取对方的 QQ 号导致功能失效。
 
-> 在3.0.4及以前版本有在特定情况下群成员可以越权执行重置命令的bug，请尽快更新！
 
 | 指令 | 英文缩写 | 其他别称 | 权限 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -58,12 +57,6 @@
 | `/求婚 @用户` | `qh` | - | 用户 | 向群友发起求婚 |
 | `/分手`、`/离婚` | `fs` | - | 用户 | 每日上限大于 1 时显示离婚列表，可选择一人或全部离婚；强娶关系不可解除，成功后冷却 72 小时 |
 | `/挑选老婆` | `txlp` | - | 用户 | 从随机抽取的候选群友中选择一位成为今日老婆 |
-
-求婚发起后，对方可在 30 秒内回复 `同意` 接受，或回复 `拒绝` 拒绝。若被拒绝，发起方可按机器人提示继续确认是否转入强娶流程。
-
-求婚榜单使用 `template/proposal_ranking.html` 渲染，显示头像、求婚人数及成功人数。首位突出展示为“本群最花心”，每次生成随机选择一条评价；其他成员不显示评价。图片渲染失败时自动返回文字榜单。
-
-发送 `/挑选老婆`（或 `txlp`）后，机器人会从活跃群友中随机抽取若干位候选（数量可配置，默认 3，最大 6），并以编号列表展示。选择编号即可
 
 ### 💡 关键词模式
 若在配置中开启 `keyword_trigger_enabled`，则上述指令（包括英文缩写）均可**直接发送**（不带 `/` 前缀）触发。
@@ -137,7 +130,11 @@ astrbot-plugin-wifepicker/
 │   │   ├── __init__.py
 │   │   ├── user_profiles.py   # 资料缓存、昵称与头像解析、跨平台回复格式
 │   │   ├── telegram_support.py # Telegram 用户识别、成员与头像适配
+│   │   ├── qq_official_groups.py # QQ 官机群名获取、缓存与接口兼容
 │   │   └── onebot_api.py      # OneBot API 响应解析
+│   ├── db/                   # 新功能使用的 SQLite 存储层
+│   │   ├── __init__.py
+│   │   └── proposals.py      # 求婚明细、去重排行与 60 天滚动清理
 │   ├── debug.py               # 调试日志入口
 │   ├── debug_utils.py         # 关系图调试数据生成工具
 │   └── command/
@@ -148,6 +145,7 @@ astrbot-plugin-wifepicker/
 │       ├── my_wife.py         # /我的老婆
 │       ├── pick_wife.py       # /挑选老婆 与 重新挑选/放弃交互流程
 │       ├── propose.py         # /求婚 与同意/拒绝交互流程
+│       ├── proposal_rank.py   # /花心大萝卜榜、随机评价与图片失败回退文字
 │       ├── rbqrank.py         # /rbq排行
 │       ├── relationdiagram.py # /关系图
 │       ├── reset_propose_cd.py # /重置求婚时间
@@ -158,6 +156,7 @@ astrbot-plugin-wifepicker/
 │           └── propose_official.py   # 求婚邀请与同意/拒绝按钮
 ├── template/
 │   ├── graph_template.html    # 关系图渲染模板
+│   ├── proposal_ranking.html  # 花心大萝卜榜渲染模板
 │   └── rbq_ranking.html       # rbq 排行渲染模板
 └── pic/                       # README 演示图片
 ```

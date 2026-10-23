@@ -375,6 +375,20 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
                 yield event.plain_result(tr(plugin_instance, "propose_invalid"))
                 return
 
+            proposer_propose_cd = get_propose_cooldown_status(
+                plugin_instance, group_id, proposer_id
+            )
+            target_propose_cd = get_propose_cooldown_status(
+                plugin_instance, group_id, user_id
+            )
+            if proposer_propose_cd or target_propose_cd:
+                debug_log(plugin_instance, "propose", f"accept_invalid group={group_id} proposer={proposer_id} target={user_id} proposer_propose_cd={proposer_propose_cd} target_propose_cd={target_propose_cd}")
+                _delete_requests_by_proposer(group_id, proposer_id)
+                event.stop_event()
+                await _resolve_proposal(plugin_instance, req, "cancelled")
+                yield event.plain_result(tr(plugin_instance, "propose_invalid_cooldown"))
+                return
+
             timestamp = datetime.now().isoformat()
             group_records = get_group_records(plugin_instance, group_id)
             daily_limit = plugin_instance.config.get("daily_limit", 1)

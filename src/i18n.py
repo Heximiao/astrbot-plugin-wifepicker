@@ -6,6 +6,7 @@ Chat messages are localized here using the plugin's explicit language setting.
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 
@@ -74,6 +75,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "propose_timeout": " ...很遗憾，求婚超时了，对方似乎没有答应...",
         "force_cancelled": "已取消强娶。",
         "propose_invalid": "求婚已失效：你们中有人进入了强娶冷却期。",
+        "propose_invalid_cooldown": "求婚已失效：你们中有人进入了求婚冷却期。",
         "propose_accepted": "🎉 恭喜！{target_name} 接受了 {proposer_name} 的求婚！\n你们已正式结为夫妻！",
         "propose_rejected": " 很遗憾，【{target_name}】拒绝了你的求婚。\n是否强娶？请在 30 秒内回复“是”，否则不会进入强娶逻辑。",
         "reset_records": "今日抽取记录、分手冷却时间和本群挑选老婆冷却已重置！",
@@ -171,6 +173,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "propose_timeout": " ...Sadly, the proposal timed out without an answer...",
         "force_cancelled": "Forced marriage cancelled.",
         "propose_invalid": "The proposal is no longer valid because one of you entered the forced-marriage cooldown.",
+        "propose_invalid_cooldown": "The proposal is no longer valid because one of you entered the proposal cooldown.",
         "propose_accepted": "🎉 Congratulations! {target_name} accepted {proposer_name}'s proposal!\nYou are officially married!",
         "propose_rejected": " Sadly, 【{target_name}】 rejected your proposal.\nForce the marriage? Reply “yes” within 30 seconds; otherwise it will be cancelled.",
         "reset_records": "Today's draws, breakup cooldowns, and this group's wife-picking cooldowns have been reset!",
@@ -268,6 +271,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "propose_timeout": " ...残念ながら、返事がないままプロポーズが時間切れになりました...",
         "force_cancelled": "強引なお迎えをキャンセルしました。",
         "propose_invalid": "どちらかが強引なお迎えのクールダウンに入ったため、プロポーズは無効になりました。",
+        "propose_invalid_cooldown": "どちらかがプロポーズのクールダウンに入ったため、このプロポーズは無効になりました。",
         "propose_accepted": "🎉 おめでとうございます！{target_name}さんが{proposer_name}さんのプロポーズを受け入れました！\nお二人は正式に夫婦になりました！",
         "propose_rejected": " 残念ながら、【{target_name}】さんにプロポーズを断られました。\n強引にお迎えしますか？30秒以内に「はい」と返信してください。",
         "reset_records": "今日の抽選履歴、別れのクールダウン、このグループの選択クールダウンをリセットしました！",
@@ -326,7 +330,7 @@ def tr(plugin_instance: Any, key: str, **kwargs: Any) -> str:
         return template
 
 
-def is_language(plugin_instance: Any, language: str) -> bool:
+def is_language(plugin_instance: Any, language: str) -> builtins.bool:
     return get_language(plugin_instance) == language
 
 
