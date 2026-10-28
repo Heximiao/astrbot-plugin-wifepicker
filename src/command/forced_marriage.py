@@ -170,6 +170,11 @@ async def cmd_force_marry(
 
     save_json(plugin_instance.records_file, plugin_instance.records)
     save_json(plugin_instance.forced_file, plugin_instance.forced_records)
+    affinity = getattr(plugin_instance, "affinity", None)
+    if affinity is not None:
+        event_key = getattr(event.message_obj, "message_id", None) or now
+        await affinity.game(event, "forced", user_id, target_id,
+                            f"force:{event_key}:{user_id}:{target_id}")
 
     avatar_url = await get_avatar_source(plugin_instance, event, target_id)
     result_text = tr(plugin_instance, "force_success", target_name=target_name)

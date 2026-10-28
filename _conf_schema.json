@@ -169,6 +169,55 @@
             "step": 1
         }
     },
+    "group_affinity": {
+        "type": "object",
+        "description": "群友好感度（实验性功能）",
+        "hint": "实验性功能，存在不稳定性和误判，仅供娱乐。启用后会记录有限的群消息和互动证据，所有好感度数据最多保留60天。",
+        "items": {
+            "enabled": {
+                "type": "bool",
+                "description": "启用群友好感度（实验性功能）",
+                "hint": "默认关闭。开启后可查看对方对自己的好感度，也可调整自己对对方的好感度；根据双向@、引用回复、持续互动和求婚等事件综合计分。存在不稳定性和误判。",
+                "default": false
+            },
+            "use_small_model": {
+                "type": "bool",
+                "description": "启用小模型情感分析（自动下载）",
+                "hint": "默认关闭，仅在好感度总开关开启时生效。首次开启自动通过镜像下载约136MB的ONNX情感模型及分词文件，并安装独立CPU运行依赖（额外占用磁盘和内存）；无需显卡，不调用付费API，不上传聊天。准备失败或未开启时仍按互动与求婚等事件计分。",
+                "default": false
+            },
+            "whitelist_groups": {
+                "type": "list",
+                "description": "好感度群聊白名单",
+                "hint": "仅限制好感度功能，不影响抽老婆等功能。留空表示不额外限制；填写后只允许这些群使用好感度。必须先通过插件顶部的全局群黑白名单，此白名单不能放行被全局禁止的群。",
+                "default": []
+            },
+            "blacklist_groups": {
+                "type": "list",
+                "description": "好感度群聊黑名单",
+                "hint": "这些群不采集好感度消息、不做情绪分析、不记录游戏加减分，也不响应好感度查询或调整。同一群同时在好感度黑白名单中时，以黑名单为准。已有数据仍按60天规则清理。",
+                "default": []
+            },
+            "aggressive": {
+                "type": "bool",
+                "description": "激进判断",
+                "hint": "开启后自动加分和扣分幅度均为普通模式的1.6倍；不影响手动设分，不降低情绪判断门槛。",
+                "default": false
+            },
+            "model_mirror": {
+                "type": "string",
+                "description": "模型优先备用镜像地址",
+                "hint": "首先尝试https://huggingface.co官方源，失败后依次尝试此处配置的镜像、其余内置HF镜像（hf-mirror.com、aifasthub.com、hf-mirror.net），自动去重并保留续传进度。仅允许不含账号和查询参数的HTTPS地址；修改后重载插件。",
+                "default": "https://hf-mirror.com"
+            },
+            "pip_mirror": {
+                "type": "string",
+                "description": "运行依赖下载镜像地址",
+                "hint": "仅开启小模型时，向插件数据目录的独立Python环境安装ONNX CPU运行依赖，不修改AstrBot环境。需要Python支持venv/pip，镜像或系统不兼容时回退基础计分。",
+                "default": "https://pypi.tuna.tsinghua.edu.cn/simple"
+            }
+        }
+    },
     "debug_enabled": {
         "type": "bool",
         "description": "全局调试日志",
