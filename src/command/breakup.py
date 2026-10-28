@@ -167,6 +167,13 @@ async def cmd_breakup(plugin_instance, event: AstrMessageEvent, *, selection=Non
     save_json(plugin_instance.records_file, plugin_instance.records)
     save_json(plugin_instance.breakup_file, plugin_instance.breakup_records)
 
+    affinity = getattr(plugin_instance, "affinity", None)
+    if affinity is not None:
+        for wife_id in sorted(wife_ids):
+            timestamps = ";".join(sorted(stamp for target, stamp in relationship_keys if target == wife_id))
+            await affinity.game(event, "divorced", user_id, wife_id,
+                                f"divorce:{plugin_instance.records.get('date', '')}:{user_id}:{wife_id}:{timestamps}")
+
     wife_text = "、".join(f"【{name}】" for name in wife_names)
     yield event.plain_result(
         tr(plugin_instance, "breakup_success", wives=wife_text)

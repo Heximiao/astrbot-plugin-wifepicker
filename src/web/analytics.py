@@ -10,7 +10,7 @@ from ..db.affinity import DAY, RETENTION, SCOPE_SQL
 COMPONENTS = {"familiarity": "熟悉积累", "friendliness": "情绪倾向", "game": "婚姻互动", "poke": "戳一戳"}
 REASONS = {"mention": "提及互动", "reply": "引用回复", "poke": "戳一戳", "accepted": "求婚同意",
            "rejected": "求婚被拒", "forced": "强娶", "manual": "手动调整", "sentiment": "情绪证据更新",
-           "time": "时间流逝与证据到期", "mode": "计分模式变化"}
+           "time": "时间流逝与证据到期", "mode": "计分模式变化", "divorced": "离婚"}
 
 
 def components(row):
@@ -38,7 +38,7 @@ def change(before, after, reason):
     elif not after:
         explanation = "这条证据尚未形成该方向的可计算分数。"
     elif reason in {"mention", "reply"} and any(part["key"] == "familiarity" and part["delta"] < 0 for part in parts):
-        explanation = "双方当天互动次数比例发生变化，熟悉度重新估算；不是收到新的负面评价。"
+        explanation = "旧版互动均衡系数重算导致熟悉度下降（历史记录）；新版已改为失衡只降低新增贡献。"
     elif reason == "time":
         explanation = "这段时间的自然衰减、60天证据退出或未单独记录的规则重算，不是新的拒绝或攻击事件。"
     elif reason == "mode":
@@ -115,7 +115,7 @@ def group_report(store, scope, aggressive=False, user="", now=None):
         message_count = sum(day["messages"] for day in activity.values())
         return {"scope": list(scope), "name": group_name[0] if group_name else f"群 {scope[2]}",
                 "at": now, "members": [{"id": uid, "name": names.get(uid, uid)} for uid in nodes],
-                "totals": {"members": len(members), "messages": message_count,
+                "totals": {"members": len(members), "messages": message_count, "divorced": kinds["divorced"],
                            "chat": kinds["mention"] + kinds["reply"], "poke": kinds["poke"],
                            "accepted": kinds["accepted"], "rejected": kinds["rejected"], "forced": kinds["forced"]},
                 "activity": [{"at": day * DAY, **values} for day, values in sorted(activity.items())],
@@ -166,7 +166,7 @@ def pair_report(store, scope, source, target, aggressive=False, days=30, page=1,
                 entries.append({"at": row["created_at"], "kind": row["kind"], "basis": "reconstructed",
                                 "id": 0, "evidence_id": str(row["id"])})
         for row in games:
-            relevant = (row["kind"] == "accepted" or (row["kind"] == "forced" and row["actor_id"] == source)
+            relevant = (row["kind"] in {"accepted", "divorced"} or (row["kind"] == "forced" and row["actor_id"] == source)
                         or (row["kind"] == "rejected" and row["target_id"] == source))
             if not relevant:
                 continue
@@ -196,7 +196,7 @@ def pair_report(store, scope, source, target, aggressive=False, days=30, page=1,
             curve[row["created_at"]] = {"at": row["created_at"], "score": after["score"] if after else None, "basis": "recorded"}
         reverse = store._score(db, scope, target, source, now, aggressive)
         counts = Counter(row["kind"] for row in interactions if row["source_id"] == source)
-        counts.update(row["kind"] for row in games if row["actor_id"] == source or row["kind"] == "accepted")
+        counts.update(row["kind"] for row in games if row["actor_id"] == source or row["kind"] in {"accepted", "divorced"})
         return {"scope": list(scope), "source": source, "target": target, "source_name": names.get(source, source),
                 "target_name": names.get(target, target), "at": now, "current": current, "reverse": reverse,
                 "components": components(current), "curve": [curve[key] for key in sorted(curve)],

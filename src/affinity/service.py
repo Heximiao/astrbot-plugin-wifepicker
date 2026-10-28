@@ -274,7 +274,7 @@ class AffinityService:
             item["body"], item["kind"], 0, item["now"], bool(settings(self.plugin).get("aggressive", False)),
         )
         self.debug(f"interaction message={item['message_id']} source={item['sender']} target={target} "
-                   f"kind={item['kind']} saved_id={interaction_id} reason={'saved' if interaction_id else 'deduplicated_or_ten_minute_cooldown'}")
+                   f"kind={item['kind']} saved_id={interaction_id} reason={'saved' if interaction_id else 'duplicate_message_or_ten_minute_cooldown'}")
         if interaction_id and settings(self.plugin).get("use_small_model", False) and self.model.ready:
             try:
                 self.model_queue.put_nowait((interaction_id, item["body"], item["scope"]))

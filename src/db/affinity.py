@@ -222,14 +222,13 @@ class AffinityStore:
                 ):
                     return None
                 sentiment = 0
-            # One directional observation per ten minutes. Repeating the same
-            # text within a day also earns no additional observation. Pokes
+            # One directional observation per ten minutes, regardless of text. Pokes
             # have their own quota and never suppress normal chat evidence.
             exists = None if kind == "poke" else db.execute(
                 f"""SELECT 1 FROM affinity_interactions WHERE {SCOPE_SQL}
                     AND kind!='poke' AND source_id=? AND target_id=? AND
-                    created_at<=? AND (created_at>? OR (body_hash=? AND created_at>?)) LIMIT 1""",
-                (*scope, source, target, now, now - 600, digest, now - DAY),
+                    created_at<=? AND created_at>? LIMIT 1""",
+                (*scope, source, target, now, now - 600),
             ).fetchone()
             if exists:
                 return None
@@ -259,7 +258,7 @@ class AffinityStore:
             self._audit_pair(db, scope, before, "sentiment", interaction_id, now, aggressive)
 
     def game(self, scope, event_id, kind, actor, target, now, aggressive=False):
-        if kind not in {"accepted", "rejected", "forced"}:
+        if kind not in {"accepted", "rejected", "forced", "divorced"}:
             raise ValueError("Unknown affinity game event")
         with closing(self.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
@@ -293,9 +292,10 @@ class AffinityStore:
             age = max(0, now - at) / DAY
             if outgoing and incoming:
                 mutual_days += 1
-                # Mutual days matter more than a burst of one-sided mentions.
-                balance = min(outgoing, incoming) / max(outgoing, incoming)
-                familiarity += (1 + min(outgoing + incoming, 12) / 12) * (0.5 + 0.5 * balance) * 2 ** (-age / 30)
+                # Harmonic mean is monotone in either count: one-sided extra
+                # replies earn diminishing credit without taking credit back.
+                effective_pairs = 2 * outgoing * incoming / (outgoing + incoming)
+                familiarity += (1 + min(effective_pairs, 6) / 6) * 2 ** (-age / 30)
             # A single emotional sentence cannot independently swing a score.
             if len(sentiments) >= 2:
                 friendliness += max(-2, min(2, sum(sentiments))) * 2 ** (-age / EMOTION_HALF_LIFE_DAYS)
@@ -313,12 +313,14 @@ class AffinityStore:
         relevant_games = 0
         for row in games:
             kind, actor, at = row["kind"], row["actor_id"], row["created_at"]
-            if kind == "accepted" or (kind == "forced" and actor == source) or (kind == "rejected" and row["target_id"] == source):
+            if kind in {"accepted", "divorced"} or (kind == "forced" and actor == source) or (kind == "rejected" and row["target_id"] == source):
                 relevant_games += 1
             day = int(at // DAY)
             contribution = 0.0
             if kind == "accepted":
                 contribution = 5
+            elif kind == "divorced":
+                contribution = -2
             elif kind == "forced" and actor == source:
                 contribution = 2
             elif kind == "rejected" and row["target_id"] == source:
