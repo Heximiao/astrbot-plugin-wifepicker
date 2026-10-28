@@ -56,6 +56,12 @@ async def affinity_names(plugin, event, target):
         sender_fallback = nickname(event.get_sender_name(), sender)
     sender_name = names.get(sender) or sender_fallback or nickname(get_display_name(plugin, event, sender), sender)
     target_name = names.get(target) or nickname(get_display_name(plugin, event, target), target)
+    remember = getattr(getattr(plugin, "affinity", None), "remember_names", None)
+    if callable(remember):
+        fresh_names = {user_id: name for user_id, name in names.items() if name}
+        if sender not in fresh_names and sender_fallback:
+            fresh_names[sender] = sender_fallback
+        await remember(event, fresh_names)
     return target_name or tr(plugin, "affinity_member"), sender_name or tr(plugin, "affinity_member")
 
 

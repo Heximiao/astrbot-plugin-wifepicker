@@ -1,4 +1,10 @@
 {
+  "views": {
+    "affinity": {"title": "Plugin Console", "description": "View daily wife relationships, affinity, plugin logs, configuration and stored data."}
+  },
+  "pages": {
+    "affinity": {"title": "Plugin Console", "description": "View daily wife relationships, affinity, plugin logs, configuration and stored data."}
+  },
   "metadata": {
     "display_name": "Wife of the Day",
     "short_desc": "Draw an active group member as your wife of the day.",

@@ -8,6 +8,8 @@
 
 详细安装、计分规则、数据库表和日志说明见 [好感度功能说明](docs/affinity.md)。
 
+新增 AstrBot 原生「插件控制台」
+
 ## 2026.10.23更新
 添加花心大萝卜榜，统计求婚次数最多的群友，古早的issue，一直鸽到现在(笑) [#23](https://github.com/Heximiao/astrbot-plugin-wifepicker/issues/23)
 

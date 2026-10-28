@@ -167,6 +167,13 @@ class RandomWifePlugin(Star):
         self._active_users_trim_interval_seconds = ACTIVE_USERS_TRIM_INTERVAL_SECONDS
         start_active_users_save_task(self)
         self.affinity = AffinityService(self, logger)
+        self.affinity_dashboard = None
+        try:
+            from .src.web.dashboard import AffinityDashboard
+            self.affinity_dashboard = AffinityDashboard(self)
+            self.affinity_dashboard.register()
+        except (ImportError, AttributeError) as exc:
+            logger.warning(f"[wifepicker.affinity.page] 当前 AstrBot 未提供兼容的插件页面接口：{exc}")
 
         self._keyword_router = KeywordRouter(routes=_DEFAULT_KEYWORD_ROUTES)
         self._keyword_handlers = {
@@ -257,6 +264,9 @@ class RandomWifePlugin(Star):
                 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
+        dashboard = getattr(self, "affinity_dashboard", None)
+        if dashboard is not None:
+            dashboard.profiles.observe(event)
         affinity = getattr(self, "affinity", None)
         if affinity is not None:
             affinity.observe(event)
@@ -696,6 +706,9 @@ class RandomWifePlugin(Star):
                 logger.error(f"清理过期求婚统计失败: {exc}")
 
     async def terminate(self):
+        dashboard = getattr(self, "affinity_dashboard", None)
+        if dashboard is not None:
+            dashboard.close()
         affinity = getattr(self, "affinity", None)
         if affinity is not None:
             await affinity.close()

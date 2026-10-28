@@ -75,6 +75,12 @@ def snapshot(plugin, event, debug=None):
     if value(author, "bot", False):
         return skip("bot_author")
     components = value(obj, "message", []) or []
+    sender_profile = value(obj, "sender")
+    sender_name = value(sender_profile, "card") or value(sender_profile, "nickname")
+    if not sender_name and callable(getattr(event, "get_sender_name", None)):
+        sender_name = event.get_sender_name()
+    names = {sender: sender_name} if sender_name else {}
+    group_name = value(value(obj, "group"), "group_name") or value(raw, "group_name", "")
     plains, targets, replies = [], set(), []
     has_poke, poke_targets = False, set()
     for component in components:
@@ -85,10 +91,14 @@ def snapshot(plugin, event, debug=None):
             target = clean_id(value(component, "qq"))
             if target:
                 targets.add(target)
+                if target != sender and value(component, "name"):
+                    names.setdefault(target, value(component, "name"))
         elif kind == "reply":
             target = clean_id(value(component, "sender_id"))
             if target:
                 targets.add(target)
+                if target != sender and value(component, "sender_nickname"):
+                    names.setdefault(target, value(component, "sender_nickname"))
             elif value(component, "id") is not None:
                 replies.append(str(value(component, "id")))
         elif kind == "poke":
@@ -108,7 +118,7 @@ def snapshot(plugin, event, debug=None):
             return skip("invalid_or_self_or_bot_poke_target")
         return {"scope": proposal_scope(event), "message_id": str(value(obj, "message_id") or uuid4().hex),
                 "sender": sender, "body": "", "targets": poke_targets, "replies": [],
-                "kind": "poke", "now": time.time(), "bot": bot}
+                "kind": "poke", "now": time.time(), "bot": bot, "names": names, "group_name": group_name}
     body = " ".join(plains).strip() if components else str(getattr(event, "message_str", "") or "").strip()
     # Official QQ may encode mentions in text instead of At components.
     for target in re.findall(r"<@!?([A-Za-z0-9_-]+)>|\[CQ:at,qq=([^,\]]+)[^\]]*\]", body):
@@ -153,7 +163,7 @@ def snapshot(plugin, event, debug=None):
     return {"scope": proposal_scope(event), "message_id": message_id, "sender": sender,
             "body": body[:512], "targets": targets, "replies": replies[:2],
             "kind": "reply" if replies or any(component_kind(c) == "reply" for c in components) else "mention",
-            "now": time.time(), "bot": bot}
+            "now": time.time(), "bot": bot, "names": names, "group_name": group_name}
 
 
 def directed_sentiment(body, probabilities):
@@ -229,6 +239,9 @@ class AffinityService:
             self.debug(f"process_skipped scope={item['scope']} reason=group_access_denied_after_enqueue")
             return
         db = await self.database()
+        if item.get("names") or item.get("group_name"):
+            await asyncio.to_thread(db.profiles, item["scope"], item.get("names", {}), item["now"], item.get("group_name", ""),
+                                    authoritative_ids=(item["sender"],))
         if item["kind"] == "poke":
             targets = item["targets"]
             if len(targets) != 1 or targets & {item["sender"], item["bot"]}:
@@ -236,7 +249,7 @@ class AffinityService:
             target = next(iter(targets))
             interaction_id = await asyncio.to_thread(
                 db.interaction, item["scope"], item["message_id"], item["sender"], target,
-                "", "poke", 0, item["now"],
+                "", "poke", 0, item["now"], bool(settings(self.plugin).get("aggressive", False)),
             )
             self.debug(f"poke scope={item['scope']} source={item['sender']} target={target} "
                        f"saved_id={interaction_id} reason={'saved' if interaction_id else 'duplicate_or_30min_cooldown_or_pair_daily_limit'}")
@@ -258,7 +271,7 @@ class AffinityService:
         target = next(iter(targets))
         interaction_id = await asyncio.to_thread(
             db.interaction, item["scope"], item["message_id"], item["sender"], target,
-            item["body"], item["kind"], 0, item["now"],
+            item["body"], item["kind"], 0, item["now"], bool(settings(self.plugin).get("aggressive", False)),
         )
         self.debug(f"interaction message={item['message_id']} source={item['sender']} target={target} "
                    f"kind={item['kind']} saved_id={interaction_id} reason={'saved' if interaction_id else 'deduplicated_or_ten_minute_cooldown'}")
@@ -281,7 +294,8 @@ class AffinityService:
                     if (sentiment and enabled(self.plugin) and settings(self.plugin).get("use_small_model", False)
                             and allowed_group(self.plugin, scope[2])):
                         db = await self.database()
-                        await asyncio.to_thread(db.set_sentiment, interaction_id, sentiment)
+                        await asyncio.to_thread(db.set_sentiment, interaction_id, sentiment,
+                                                bool(settings(self.plugin).get("aggressive", False)))
                 else:
                     self.debug(f"sentiment_skipped interaction={interaction_id} scope={scope} reason=disabled_or_group_access_denied")
             except Exception as exc:
@@ -328,7 +342,8 @@ class AffinityService:
             return
         try:
             db = await self.database()
-            await asyncio.to_thread(db.game, proposal_scope(event), str(event_id), kind, str(actor), str(target), time.time())
+            await asyncio.to_thread(db.game, proposal_scope(event), str(event_id), kind, str(actor), str(target), time.time(),
+                                    bool(settings(self.plugin).get("aggressive", False)))
             self.debug(f"game scope={proposal_scope(event)} kind={kind} actor={actor} target={target} event={event_id}")
         except Exception as exc:
             self.logger.warning(f"[wifepicker] 好感度游戏事件保存失败: {type(exc).__name__}")
@@ -342,6 +357,11 @@ class AffinityService:
                                         bool(settings(self.plugin).get("aggressive", False)))
         self.debug(f"query scope={proposal_scope(event)} direction={source}->{target} result={result}")
         return result
+
+    async def remember_names(self, event, names):
+        if enabled(self.plugin) and not event.is_private_chat() and allowed_group(self.plugin, event.get_group_id()):
+            db = await self.database()
+            await asyncio.to_thread(db.profiles, proposal_scope(event), names, time.time())
 
     async def adjust(self, event, source, target, value, relative):
         if not enabled(self.plugin) or event.is_private_chat() or not allowed_group(self.plugin, event.get_group_id()):
