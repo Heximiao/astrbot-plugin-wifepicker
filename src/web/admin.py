@@ -4,13 +4,14 @@ import asyncio
 import copy
 import hashlib
 import json
-import logging
 import math
 import sqlite3
 import time
+import traceback
 from collections import deque
 from contextlib import closing
 from pathlib import Path
+from threading import RLock
 
 ROOT = Path(__file__).resolve().parents[2]
 JSON_FILES = {
@@ -29,29 +30,46 @@ TABLES = {
 }
 
 
-class PluginLogBuffer(logging.Handler):
+class PluginLogBuffer:
+    """Observe AstrBot's existing logger without creating another logger/handler."""
+
     def __init__(self):
-        super().__init__()
+        self.lock = RLock()
+        self.closed = False
         self.rows = deque(maxlen=1000)
         self.sequence = 0
 
-    def emit(self, record):
+    def filter(self, record):
         try:
             # Older AstrBot versions share a logger. Verify the source path,
             # rather than capturing every other plugin on that shared logger.
             own = Path(record.pathname).resolve().is_relative_to(ROOT)
             if not own:
-                return
-            self.sequence += 1
-            self.rows.append({"id": self.sequence, "at": record.created, "level": record.levelname,
-                              "source": f"{Path(record.pathname).name}:{record.lineno}",
-                              "message": self.format(record)[:8192]})
+                return True
+            message = record.getMessage()
+            if record.exc_info:
+                message += "\n" + "".join(traceback.format_exception(*record.exc_info)).rstrip()
+            elif record.exc_text:
+                message += "\n" + record.exc_text
+            if record.stack_info:
+                message += "\n" + record.stack_info
+            with self.lock:
+                if not self.closed:
+                    self.sequence += 1
+                    self.rows.append({"id": self.sequence, "at": record.created, "level": record.levelname,
+                                      "source": f"{Path(record.pathname).name}:{record.lineno}",
+                                      "message": message[:8192]})
         except Exception:
-            self.handleError(record)
+            # A page cache failure must never interrupt AstrBot's log output.
+            pass
+        return True
+
+    def close(self):
+        with self.lock:
+            self.closed = True
 
     def snapshot(self, level, search, after):
-        self.acquire()
-        try:
+        with self.lock:
             rows = [row for row in self.rows if row["at"] >= time.time() - 60 * 86400]
             reset = after > self.sequence
             selected = [row for row in rows if (reset or row["id"] > after)
@@ -59,8 +77,6 @@ class PluginLogBuffer(logging.Handler):
                         and search.casefold() in (row["message"] + row["source"]).casefold()]
             return {"rows": selected[-500:], "cursor": self.sequence, "reset": reset,
                     "capacity": 1000, "note": "仅本插件启动后的日志，内存最多保留1000条；重载后重新开始，不修改AstrBot日志级别。"}
-        finally:
-            self.release()
 
 
 def revision(config):
@@ -114,10 +130,10 @@ class ConsoleAdmin:
         self.lock = asyncio.Lock()
         self.logs_buffer = PluginLogBuffer()
         self.logger = self.plugin.affinity.logger
-        self.logger.addHandler(self.logs_buffer)
+        self.logger.addFilter(self.logs_buffer)
 
     def close(self):
-        self.logger.removeHandler(self.logs_buffer)
+        self.logger.removeFilter(self.logs_buffer)
         self.logs_buffer.close()
 
     def schema(self):
