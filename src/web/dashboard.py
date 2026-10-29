@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from pathlib import Path
 
 from .analytics import catalog, group_report, pair_report
 from .marriage import marriage_report, today_groups
@@ -28,7 +29,8 @@ class AffinityDashboard:
         self.admin = ConsoleAdmin(self)
 
     def register(self):
-        for endpoint, handler in (("meta", self.meta), ("group", self.group), ("pair", self.pair), ("marriage", self.marriage)):
+        for endpoint, handler in (("meta", self.meta), ("group", self.group), ("pair", self.pair), ("marriage", self.marriage),
+                                  ("network-script", self.network_script)):
             self.plugin.context.register_web_api(f"/{PLUGIN_NAME}/affinity/{endpoint}", handler, ["GET"], "好感度可视化：" + endpoint)
         for endpoint, handler, methods in (
             ("logs", self.admin.logs, ["GET"]), ("config", self.admin.config, ["GET"]),
@@ -39,6 +41,19 @@ class AffinityDashboard:
 
     def close(self):
         self.admin.close()
+
+    async def network_script(self):
+        """Share the chat diagram's bundled engine through the authenticated bridge.
+
+        AstrBot confines view assets to pages/affinity, so a relative ../../ URL
+        cannot reach this file. The path is fixed and never supplied by clients.
+        """
+        try:
+            path = Path(__file__).resolve().parents[2] / "vis-network.min.js"
+            source = await asyncio.to_thread(path.read_text, encoding="utf-8")
+            return self.json_response({"source": source})
+        except Exception as exc:
+            return self.error(exc)
 
     def param(self, name, default=""):
         query = getattr(self.request, "query", None)

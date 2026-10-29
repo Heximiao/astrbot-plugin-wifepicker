@@ -1,4 +1,4 @@
-import {drawNetwork} from './network.js';
+import {drawNetwork, loadNetworkEngine} from './network.js';
 import {initAdmin} from './admin.js';
 const bridge = window.AstrBotPluginView || window.AstrBotPluginPage;
 const $ = id => document.getElementById(id);
@@ -94,7 +94,14 @@ function renderMetrics() {
   const data = [['今日关系方向', state.marriage.totals.relations, `${number(state.marriage.totals.members)} 位群友参与`], ['有效聊天', totals.chat, '近60天，提及 + 引用'],
     ['戳一戳', totals.poke, '冷却与限额后的次数'], ['求婚同意', totals.accepted, '每次同意只统计一次'],
     ['求婚被拒', totals.rejected, '超时与取消不算拒绝'], ['强娶', totals.forced, `另记录 ${number(totals.messages)} 条消息`]];
-  $('metrics').replaceChildren(...data.map(([label, value, detail], index) => { const available = index === 0 || state.group.affinityAllowed; const card = node('div', 'metric'); card.append(node('p', 'metric-label', label), node('div', 'metric-value', available ? number(value) : '—'), node('p', 'metric-detail', available ? detail : '暂无可查看的好感度数据')); return card; }));
+  const icons = ['marriage', 'detail', 'overview', 'graph', 'logs', 'marriage'];
+  $('metrics').replaceChildren(...data.map(([label, value, detail], index) => {
+    const available = index === 0 || state.group.affinityAllowed, card = node('div', 'metric');
+    const line = node('div', 'metric-number'), icon = svgNode('svg', {viewBox: '0 0 24 24', width: 21, height: 21, 'aria-hidden': true});
+    icon.append(svgNode('path', {d: tabIcons[icons[index]], fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}));
+    line.append(icon, node('strong', 'metric-value', available ? number(value) : '—'));
+    card.append(node('p', 'metric-label', label), line, node('p', 'metric-detail', available ? detail : '暂无可查看的好感度数据')); return card;
+  }));
 }
 
 function renderMembers() {
@@ -239,7 +246,7 @@ function renderGraph() {
   const shown = drawNetwork($('network'), edges, state.group.members, {
     selected: state.person, onNode: id => run(() => choosePerson(id)), onEdge: edge => run(() => choosePair(edge.source, edge.target)),
   });
-  $('graph-note').textContent = `当前显示 ${shown.nodes} 人、${shown.edges} 个方向，最多40人和120个方向，可选择成员缩小范围。`;
+  $('graph-note').textContent = `当前显示 ${shown.nodes} 人、${shown.edges} 个方向。滚轮或按钮缩放，拖动画布平移，双击昵称筛选成员。${state.group.truncated ? '好感度数据优先展示120个方向，可在左侧选择成员查看其关系。' : ''}`;
 }
 
 function renderMarriage() {
@@ -258,7 +265,7 @@ function renderMarriage() {
   }
   const edges = [...grouped.values()].map(edge => ({...edge, label: edge.label + (edge.count > 1 ? ` ×${edge.count}` : '')}));
   const shown = drawNetwork($('marriage-network'), edges, state.group.members, {selected: state.person, onNode: id => run(() => choosePerson(id))});
-  $('marriage-graph-note').textContent = `当前显示 ${shown.nodes} 人、${shown.edges} 条连线，最多展示40人和120条连线，完整结果见下方明细。`;
+  $('marriage-graph-note').textContent = `已展示${state.person ? '该成员相关的' : '全部今日'} ${shown.nodes} 人、${shown.edges} 条连线。滚轮或按钮缩放，拖动画布平移，拖动昵称整理位置；双击昵称筛选成员，左侧“看全群的关系”恢复全图。`;
   $('marriage-note').textContent = `${report.date} · ${report.note}`;
   if (report.missing_names) $('marriage-note').textContent += ` 仍有${report.missing_names}位群友未获取昵称，可能已退群或接口未返回资料；补查最多每24小时一次。`;
   if (report.group_name_missing) $('marriage-note').textContent += ' 群名暂未获取，接口可能不可用或未开放群资料权限；24小时内不会重复补查。';
@@ -310,8 +317,8 @@ document.querySelectorAll('[data-tab]').forEach(button => {
   icon.append(svgNode('path', {d: tabIcons[button.dataset.tab], fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'})); button.prepend(icon);
 });
 admin = initAdmin(bridge, {run, notice, onSaved: () => run(loadMeta)});
-if (!bridge) notice('请从 AstrBot 管理面板 → 插件 → 今日老婆 → 插件控制台 打开此页面。', true);
-else run(async () => { const context = await bridge.ready(); theme(context); bridge.onContext(theme); await loadMeta(); });
+if (!bridge) notice('请从 AstrBot 管理面板 → 今日老婆插件 打开此页面。', true);
+else run(async () => { const context = await bridge.ready(); theme(context); bridge.onContext(theme); await loadNetworkEngine(bridge); await loadMeta(); });
 const timer = setInterval(() => { if ($('auto-refresh').checked && !document.hidden && !$('refresh').disabled && !['logs', 'config', 'data'].includes(state.tab)) run(loadMeta); }, 30000);
 let resizeFrame;
 window.addEventListener('resize', () => {

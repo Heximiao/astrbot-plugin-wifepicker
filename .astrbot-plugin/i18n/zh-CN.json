@@ -1,8 +1,8 @@
 {
   "views": {
-    "affinity": {"title": "插件控制台", "description": "查看今日老婆关系、群友好感度、互动汇总和分数变化。"}
+    "affinity": {"title": "今日老婆插件", "description": "查看今日老婆关系、群友好感度、互动汇总和分数变化。"}
   },
   "pages": {
-    "affinity": {"title": "插件控制台", "description": "查看今日老婆关系、群友好感度、互动汇总和分数变化。"}
+    "affinity": {"title": "今日老婆插件", "description": "查看今日老婆关系、群友好感度、互动汇总和分数变化。"}
   }
 }

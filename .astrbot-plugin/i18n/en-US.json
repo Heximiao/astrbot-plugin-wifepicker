@@ -1,9 +1,9 @@
 {
   "views": {
-    "affinity": {"title": "Plugin Console", "description": "View daily wife relationships, affinity, plugin logs, configuration and stored data."}
+    "affinity": {"title": "Wife of the Day", "description": "View daily wife relationships, affinity, plugin logs, configuration and stored data."}
   },
   "pages": {
-    "affinity": {"title": "Plugin Console", "description": "View daily wife relationships, affinity, plugin logs, configuration and stored data."}
+    "affinity": {"title": "Wife of the Day", "description": "View daily wife relationships, affinity, plugin logs, configuration and stored data."}
   },
   "metadata": {
     "display_name": "Wife of the Day",
