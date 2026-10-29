@@ -150,8 +150,11 @@ class ConsoleAdmin:
 
     async def config(self):
         try:
+            from ..affinity.model import download_sources
+
             current = copy.deepcopy(dict(self.plugin.config))
-            return self.dashboard.json_response({"schema": self.schema(), "config": current, "revision": revision(current)})
+            return self.dashboard.json_response({"schema": self.schema(), "config": current, "revision": revision(current),
+                                                 "default_model_sources": download_sources({})})
         except Exception as exc:
             return self.dashboard.error(exc)
 

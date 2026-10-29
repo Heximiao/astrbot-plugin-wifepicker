@@ -18,8 +18,9 @@ def https_endpoint(value):
 
 
 def download_sources(config):
-    """Always try upstream first; preserve the configured mirror as first backup."""
-    endpoints = ["https://huggingface.co", config.get("model_mirror", "https://hf-mirror.com"),
+    """Try upstream, project R2, then configured and built-in mirrors."""
+    endpoints = ["https://huggingface.co", "https://models.heximiao.com",
+                 config.get("model_mirror", "https://models.heximiao.com"),
                  "https://hf-mirror.com", "https://aifasthub.com", "https://hf-mirror.net"]
     return list(dict.fromkeys(https_endpoint(endpoint) for endpoint in endpoints))
 

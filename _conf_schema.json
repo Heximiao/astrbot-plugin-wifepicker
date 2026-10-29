@@ -207,8 +207,8 @@
             "model_mirror": {
                 "type": "string",
                 "description": "模型优先备用镜像地址",
-                "hint": "首先尝试https://huggingface.co官方源，失败后依次尝试此处配置的镜像、其余内置HF镜像（hf-mirror.com、aifasthub.com、hf-mirror.net），自动去重并保留续传进度。仅允许不含账号和查询参数的HTTPS地址；修改后重载插件。",
-                "default": "https://hf-mirror.com"
+                "hint": "模型下载顺序：①官方源 https://huggingface.co；②项目 R2 https://models.heximiao.com；③此处配置的备用镜像；④其余内置镜像 https://hf-mirror.com → https://aifasthub.com → https://hf-mirror.net。失败自动切换，重复地址自动去重，保留断点续传进度。可选择内置镜像或填写自定义地址；仅允许不含账号和查询参数的HTTPS地址，修改后保存并重载插件。",
+                "default": "https://models.heximiao.com"
             },
             "pip_mirror": {
                 "type": "string",

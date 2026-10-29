@@ -121,16 +121,36 @@ function renderMembers() {
 
 async function choosePerson(id) { state.person = id; state.source = state.target = ''; state.page = 1; await loadGroup(); }
 function renderSelectors() {
-  for (const [id, selected] of [['source-select', state.source], ['target-select', state.target]]) {
-    $(id).replaceChildren(...state.group.members.map(member => { const option = node('option', '', `${member.name} · ${member.id}`); option.value = member.id; return option; }));
-    if (selected) $(id).value = selected;
+  for (const [side, selected] of [['source', state.source], ['target', state.target]]) {
+    $(`${side}-search`).value = '';
+    filterSelector(side, selected);
   }
+}
+function filterSelector(side, selected = $(`${side}-select`).value) {
+  if (!state.group) return;
+  const query = $(`${side}-search`).value.trim().toLowerCase(), select = $(`${side}-select`);
+  const matches = state.group.members.filter(member => `${member.name} ${member.id}`.toLowerCase().includes(query));
+  select.replaceChildren(...matches.map(member => {
+    const option = node('option', '', `${member.name} · ${member.id}`); option.value = member.id; return option;
+  }));
+  if (matches.some(member => member.id === selected)) select.value = selected;
+  if (!matches.length) {const option = node('option', '', '未找到匹配的群友'); option.value = ''; select.append(option);}
+  select.disabled = !matches.length;
+  select.title = select.selectedOptions[0]?.textContent || '';
+  $(`${side}-matches`).textContent = query ? (matches.length ? `${matches.length} 位匹配，可在下拉框选择` : '试试其他昵称或完整 QQ 号') : '';
+}
+async function querySelectedPair(reverse = false) {
+  const source = $('source-select').value, target = $('target-select').value;
+  if (!source || !target) throw new Error('请先搜索并选择两位群友。');
+  if (source === target) throw new Error('选两位不同的群友，才能查看彼此的关系哦。');
+  await choosePair(reverse ? target : source, reverse ? source : target);
 }
 function renderRelations() {
   const rows = state.group.relations;
   $('relations-title').textContent = state.person ? '与 TA 有关的关系' : '群友之间的来往';
   $('relation-list').replaceChildren(...rows.map(row => {
     const button = node('button', `relation-row${row.source === state.source && row.target === state.target ? ' active' : ''}`);
+    button.title = `${row.source_name}（${row.source}） → ${row.target_name}（${row.target}）`;
     const label = node('span', 'relation-direction'); label.append(document.createTextNode(row.source_name), node('span', 'arrow', '→'), document.createTextNode(row.target_name));
     button.append(label, node('strong', '', fmt(row.score))); button.onclick = () => run(() => choosePair(row.source, row.target)); return button;
   }));
@@ -280,6 +300,7 @@ function setTab(tab) {
   state.tab = tab;
   const administration = ['logs', 'config', 'data'].includes(tab);
   document.querySelector('.layout').classList.toggle('administration', administration);
+  document.querySelector('.layout').classList.toggle('overview', tab === 'overview');
   $('workspace').classList.toggle('hidden', administration || !state.scope);
   $('empty').classList.toggle('hidden', administration || Boolean(state.scope));
   if (administration) notice({logs: '仅显示今日老婆插件的运行日志，可按级别和内容筛选。', config: '修改当前插件配置，完成编辑后点击保存。', data: '查看本插件存储占用、SQLite数据库表和JSON业务文件。'}[tab]);
@@ -295,8 +316,13 @@ $('open-marriage').onclick = () => setTab('marriage');
 $('group-select').onchange = () => run(async () => { state.scope = state.groups[Number($('group-select').value)].scope; state.person = state.source = state.target = ''; state.page = 1; state.pair = null; await loadGroup(); });
 $('member-search').oninput = renderMembers;
 $('all-members').onclick = () => run(() => choosePerson(''));
-$('query-pair').onclick = () => run(async () => { const source = $('source-select').value, target = $('target-select').value; if (source === target) throw new Error('选两位不同的群友，才能查看彼此的关系哦。'); await choosePair(source, target); });
-$('swap').onclick = () => run(() => choosePair($('target-select').value, $('source-select').value));
+$('query-pair').onclick = () => run(() => querySelectedPair());
+$('swap').onclick = () => run(() => querySelectedPair(true));
+for (const side of ['source', 'target']) {
+  $(`${side}-search`).oninput = () => filterSelector(side);
+  $(`${side}-search`).onkeydown = event => {if (event.key === 'Enter' && !event.isComposing) {event.preventDefault(); run(() => querySelectedPair());}};
+  $(`${side}-select`).onchange = event => {event.target.title = event.target.selectedOptions[0]?.textContent || '';};
+}
 $('days-select').onchange = () => run(async () => { state.page = 1; if (state.source && state.target) await loadPair(); });
 $('full-scale').onchange = () => { if (state.pair) renderCurve(); };
 $('previous').onclick = () => run(async () => { state.page = Math.max(1, state.page - 1); await loadPair(); });

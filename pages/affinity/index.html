@@ -12,7 +12,7 @@
     <div class="header-actions"><span class="badge">好感度为实验性功能</span><label class="auto"><input id="auto-refresh" type="checkbox"> 自动刷新</label><button id="refresh" class="button secondary">↻ 刷新数据</button></div>
   </header>
   <nav class="tabs" aria-label="控制台视图"><button data-tab="overview" class="tab active">运行总览</button><button data-tab="marriage" class="tab">今日老婆关系图</button><button data-tab="detail" class="tab">好感度明细</button><button data-tab="graph" class="tab">好感度关系图</button><button data-tab="logs" class="tab">运行日志</button><button data-tab="config" class="tab">配置中心</button><button data-tab="data" class="tab">数据管理</button></nav>
-  <div class="layout">
+  <div class="layout overview">
     <aside class="sidebar">
       <label class="eyebrow" for="group-select">选择群聊</label>
       <select id="group-select"><option>正在读取群聊…</option></select>
@@ -46,7 +46,7 @@
           <div class="detail-grid">
             <section class="card relations-card"><div class="card-heading"><div><h3 id="relations-title">群友之间的来往</h3><p>点一条关系，展开它的来龙去脉。</p></div></div><div id="relation-list" class="relation-list"></div><p id="relation-note" class="muted small"></p></section>
             <section class="card pair-card">
-              <div class="direction"><label>谁的好感<select id="source-select"></select></label><button id="swap" class="swap" title="查看反方向" aria-label="交换好感方向">⇄</button><label>对谁<select id="target-select"></select></label><button id="query-pair" class="button">查询</button></div>
+              <div class="direction"><div class="person-picker"><label for="source-search">谁的好感</label><input id="source-search" type="search" placeholder="搜索昵称 / QQ号" autocomplete="off" aria-controls="source-select"><select id="source-select" aria-label="选择好感来源"></select><span id="source-matches" class="select-status" aria-live="polite"></span></div><button id="swap" class="swap" title="查看反方向" aria-label="交换好感方向">⇄</button><div class="person-picker"><label for="target-search">对谁</label><input id="target-search" type="search" placeholder="搜索昵称 / QQ号" autocomplete="off" aria-controls="target-select"><select id="target-select" aria-label="选择好感对象"></select><span id="target-matches" class="select-status" aria-live="polite"></span></div><button id="query-pair" class="button">查询</button></div>
               <div id="pair-empty" class="pair-empty">选两位群友，看看这段关系是怎么长出来的。</div>
               <div id="pair-content" class="hidden"><div class="score-heading"><div><span class="eyebrow">CURRENT AFFINITY</span><h3 id="pair-title"></h3></div><span id="reverse-score" class="reverse"></span></div><div class="score-line"><strong id="score-value">—</strong><span>/ 100</span><span id="mode-label" class="badge"></span></div><div id="components" class="components"></div><p class="formula-note">基础值 + 各项贡献 + 手动修正 = 当前分数（限制在 0～100）</p></div>
             </section>

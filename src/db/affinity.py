@@ -296,9 +296,8 @@ class AffinityStore:
                 # replies earn diminishing credit without taking credit back.
                 effective_pairs = 2 * outgoing * incoming / (outgoing + incoming)
                 familiarity += (1 + min(effective_pairs, 6) / 6) * 2 ** (-age / 30)
-            # A single emotional sentence cannot independently swing a score.
-            if len(sentiments) >= 2:
-                friendliness += max(-2, min(2, sum(sentiments))) * 2 ** (-age / EMOTION_HALF_LIFE_DAYS)
+            # Each valid directed emotion counts, bounded per day and decayed.
+            friendliness += max(-2, min(2, sum(sentiments))) * 2 ** (-age / EMOTION_HALF_LIFE_DAYS)
         familiarity = min(30, familiarity)
         friendliness = max(-20, min(20, friendliness))
         games = db.execute(

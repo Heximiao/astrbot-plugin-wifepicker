@@ -60,6 +60,9 @@ def valid_file(path, size, expected):
 def download(root, endpoints):
     if isinstance(endpoints, str):
         endpoints = [endpoints]
+    # Reuse the working source for later files in this download run.
+    # A new run starts at upstream again; failures are not persisted.
+    source_start = 0
     for filename, (size, expected) in FILES.items():
         path = root / filename
         if valid_file(path, size, expected):
@@ -68,6 +71,8 @@ def download(root, endpoints):
         path.parent.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         for index, endpoint in enumerate(endpoints):
+            if index < source_start:
+                continue
             print(
                 json.dumps(
                     {
@@ -90,6 +95,7 @@ def download(root, endpoints):
                     started,
                     index + 1 < len(endpoints),
                 )
+                source_start = index
                 break
             except Exception as exc:
                 if index + 1 == len(endpoints) or time.monotonic() - started > 900:

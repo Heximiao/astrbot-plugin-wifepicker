@@ -45,7 +45,25 @@ export function initAdmin(bridge, {run, notice, onSaved}) {
     input.id = id;
     const read = () => schema.type === 'bool' ? input.checked : schema.type === 'list' ? input.value.split(/[\n,，]/).map(s => s.trim()).filter(Boolean) : ['int', 'float'].includes(schema.type) ? Number(input.value) : input.value;
     controls.push({path: name, original: schema.type === 'list' ? (original || []).map(String) : original, input, read});
-    box.append(label, input, el('p', 'field-hint', schema.hint || key)); return box;
+    box.append(label, input, el('p', 'field-hint', schema.hint || key));
+    if (name.join('.') === 'group_affinity.model_mirror' && configState.default_model_sources?.length) {
+      const defaults = configState.default_model_sources;
+      const suggestions = el('datalist'); suggestions.id = id + '-sources'; input.setAttribute('list', suggestions.id);
+      for (const source of defaults.slice(1)) {const option = el('option'); option.value = source; suggestions.append(option);}
+      const preview = el('div', 'model-sources'), list = el('ol');
+      preview.append(el('strong', '', '模型下载源 · 按顺序自动切换'), list,
+        el('p', 'field-hint', '失败后尝试下一个源，重复地址只尝试一次，保留断点续传进度。修改时显示的是预览，保存并重载插件后生效。'));
+      const update = () => {
+        const preferred = input.value.trim().replace(/\/+$/, '');
+        const sources = [...new Set([defaults[0], preferred, ...defaults.slice(1)].filter(Boolean))];
+        list.replaceChildren(...sources.map((source, index) => {
+          const row = el('li'), tag = index === 0 ? '官方源' : source === preferred ? '优先备用' : '内置备用';
+          row.append(el('span', 'source-kind', tag), el('code', '', source)); return row;
+        }));
+      };
+      input.addEventListener('input', update); update(); box.append(suggestions, preview);
+    }
+    return box;
   }
 
   async function config() {

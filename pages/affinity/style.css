@@ -52,3 +52,45 @@ body>.tabs{margin:14px 16px 0;gap:4px;border-color:#e4eaf2}
 @media(min-width:1101px){.summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(max-width:900px){.layout{display:block}.sidebar{margin-bottom:16px}.card-heading{flex-wrap:wrap}.intro h2{font-size:18px}.tab{font-size:12px;padding:10px 12px}.header{padding:14px 16px}}
 @media(max-width:600px){.header{margin:0;padding:14px 12px;min-height:auto}.brand h1{font-size:16px}.brand p{font-size:10px}.plugin-logo{width:30px;height:30px}.brand{gap:8px}.layout{margin:14px 10px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metric-label{font-size:11px}.metric-value{font-size:23px}.metric-detail{font-size:10px}.card{padding:14px}.card-heading h3{font-size:14px}.network{height:460px}.network-controls{right:8px;bottom:8px;padding:3px}.network-controls button{padding:6px 8px;font-size:11px}.network-shell.expanded{inset:5px}.detail-grid{grid-template-columns:1fr}.activity-chart{height:190px}}
+.model-sources{margin-top:12px;padding:13px 15px;background:#f7f9fd;border:1px solid #e1e9f7;border-radius:7px}
+.model-sources>strong{font-size:12px;color:#36547c;font-weight:600}
+.model-sources ol{margin:10px 0 0;padding-left:22px;color:#7b889b;font-size:12px}
+.model-sources li{padding:5px 0 5px 3px;line-height:1.7}
+.source-kind{display:inline-block;min-width:62px;color:#53729c;font-size:11px}
+.model-sources code{color:#244873;font:12px/1.7 Consolas,monospace;overflow-wrap:anywhere}
+.model-sources>.field-hint{margin-top:9px}
+
+/* Keep relationship browsing and the selected pair at the same compact height. */
+#detail-panel .detail-grid{grid-template-columns:minmax(200px,.65fr) minmax(0,1.8fr);gap:14px;align-items:stretch}
+#detail-panel .detail-grid>.card{margin-bottom:14px;padding:16px}
+#detail-panel .relations-card{max-height:none;min-height:0}
+#detail-panel .relations-card .card-heading{padding-bottom:10px;margin-bottom:6px}
+#detail-panel .relation-list{min-height:60px;max-height:250px}
+#detail-panel .relation-row{padding:10px 0;font-size:12px}
+#detail-panel .relations-card>p{font-size:10px;margin-top:8px;line-height:1.6}
+#detail-panel .direction{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;align-items:start;gap:8px;padding-bottom:12px}
+.person-picker{min-width:0;display:grid;gap:6px}
+.person-picker>label{font-size:11px;color:#7b889b;line-height:16px}
+.person-picker input[type=search],.person-picker select{font-size:12px;padding:7px 9px;min-height:34px;margin:0}
+.person-picker select{background:#f8faff;border-color:#e1e7f0}
+.select-status{font-size:10px;color:#7b889b;line-height:1.4;overflow-wrap:anywhere}
+.select-status:empty{display:none}
+#detail-panel .direction>.swap,#detail-panel .direction>.button{margin-top:62px;min-height:34px;padding:6px 10px}
+#detail-panel .score-heading{margin-top:12px;align-items:start;gap:12px}
+#detail-panel #pair-title{font-size:15px;line-height:1.6;overflow-wrap:anywhere}
+#detail-panel .reverse{flex-shrink:0;font-size:10px;padding-top:3px}
+#detail-panel .score-line{margin:6px 0 10px;gap:7px}
+#detail-panel .score-line strong{font-size:34px;line-height:1.2}
+#detail-panel .components{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 12px}
+#detail-panel .component{padding-top:7px}
+#detail-panel .component p{font-size:10px;line-height:1.5}
+#detail-panel .component strong{font-size:14px;margin-top:3px}
+#detail-panel .formula-note{margin-top:10px;line-height:1.6}
+@media(max-width:1100px){#detail-panel .detail-grid{grid-template-columns:1fr}#detail-panel .relations-card{max-height:200px}#detail-panel .relation-list{max-height:100px}}
+@media(max-width:600px){#detail-panel .detail-grid>.card{padding:13px}#detail-panel .direction{grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);gap:7px}#detail-panel .direction>.button{grid-column:1/-1;margin-top:0;justify-self:end;min-width:76px}#detail-panel .score-heading{flex-wrap:wrap;gap:2px}#detail-panel .components{grid-template-columns:repeat(3,minmax(0,1fr))}#detail-panel #pair-title{font-size:14px}}
+#detail-panel .pair-empty{padding:28px 12px}
+#detail-panel .ledger>.blank{padding:24px 12px}
+@media(max-width:1100px){#detail-panel .detail-grid{row-gap:0}}
+
+.layout.overview .sidebar-divider,.layout.overview .section-label,.layout.overview #member-search,.layout.overview #all-members,.layout.overview #member-list,.layout.overview .sidebar-note{display:none}
+@media(max-width:900px){.layout.overview .sidebar{display:block}.layout.overview .sidebar>select{margin-top:9px}}

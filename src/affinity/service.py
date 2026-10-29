@@ -177,7 +177,7 @@ def directed_sentiment(body, probabilities):
     text = body.casefold()
     positive = bool(re.search(r"谢谢你|感谢你|多亏你|辛苦你|有你真好|喜欢你|爱你|你真好|thank you|thanks for|love you", text))
     negative = bool(re.search(r"讨厌你|别烦我|别找我|你有病|你烦不烦|你闭嘴|hate you|leave me alone|shut up", text))
-    if positive and not negative and probabilities.get("positive", 0) >= 0.75:
+    if positive and not negative and probabilities.get("positive", 0) > 0.65:
         return probabilities["positive"]
     if negative and not positive and probabilities.get("negative", 0) >= 0.8:
         return -probabilities["negative"]
