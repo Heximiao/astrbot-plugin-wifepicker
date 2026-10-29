@@ -2,6 +2,10 @@
 from ..keyword_trigger import KeywordRoute, PermissionLevel
 
 _DEFAULT_KEYWORD_ROUTES: tuple[KeywordRoute, ...] = (
+    KeywordRoute(keyword="查看好感度", action="show_affinity"),
+    KeywordRoute(keyword="affinity", action="show_affinity"),
+    KeywordRoute(keyword="调整好感度", action="adjust_affinity"),
+    KeywordRoute(keyword="setaffinity", action="adjust_affinity"),
     KeywordRoute(keyword="今日老婆", action="draw_wife"),
     KeywordRoute(keyword="jrlp", action="draw_wife"),
     KeywordRoute(keyword="抽老婆", action="draw_wife"),

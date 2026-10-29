@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>今日老婆插件控制台</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><img class="plugin-logo" src="./assets/logo.png" alt="今日老婆插件Logo" width="40" height="40"><div><h1>今日老婆插件控制台</h1><p>查看今日老婆关系、群友好感度与互动记录</p></div></div>
+    <div class="header-actions"><span class="badge">好感度为实验性功能</span><label class="auto"><input id="auto-refresh" type="checkbox"> 自动刷新</label><button id="refresh" class="button secondary">↻ 刷新数据</button></div>
+  </header>
+  <nav class="tabs" aria-label="控制台视图"><button data-tab="overview" class="tab active">运行总览</button><button data-tab="marriage" class="tab">今日老婆关系图</button><button data-tab="detail" class="tab">好感度明细</button><button data-tab="graph" class="tab">好感度关系图</button><button data-tab="logs" class="tab">运行日志</button><button data-tab="config" class="tab">配置中心</button><button data-tab="data" class="tab">数据管理</button></nav>
+  <div class="layout overview">
+    <aside class="sidebar">
+      <label class="eyebrow" for="group-select">选择群聊</label>
+      <select id="group-select"><option>正在读取群聊…</option></select>
+      <p id="scope-label" class="muted scope">平台与机器人独立统计</p>
+      <div class="sidebar-divider"></div>
+      <div class="section-label"><label class="eyebrow" for="member-search">找一位群友</label><span id="member-count" class="muted"></span></div>
+      <input id="member-search" type="search" placeholder="搜索群昵称 / 账号" autocomplete="off">
+      <button id="all-members" class="member-all active">◎ 看全群的关系</button>
+      <div id="member-list" class="member-list"></div>
+      <div class="sidebar-note"><span class="eyebrow">小提示</span><p>选一位群友，查看与 TA 相关的来往。好感度有方向，A 对 B 与 B 对 A 可以不同。</p><p id="model-status"></p></div>
+    </aside>
+    <main>
+      <div id="notice" role="status" aria-live="polite" class="notice">正在连接 AstrBot…</div>
+      <div id="empty" class="empty hidden"><h2>暂无群聊记录</h2><p>使用今日老婆、挑选老婆或求婚后，今日关系会出现在这里。好感度需单独开启，并遵守各自的群黑白名单。</p></div>
+      <div id="workspace" class="hidden">
+        <section class="intro"><div><span class="eyebrow">THE GROUP, AT A GLANCE</span><h2 id="group-title">群聊里的小小羁绊</h2></div><span id="updated-at" class="muted"></span></section>
+        <section id="overview-panel">
+        <section id="metrics" class="metrics" aria-label="群聊汇总"></section>
+        <section class="card activity-card"><div class="card-heading"><div><h3>来往的痕迹</h3><p>最近 60 天的有效互动与游戏事件</p></div><span class="legend"><i></i>有效事件 / 日</span></div><div id="activity-chart" class="activity-chart"></div></section>
+        <section class="card"><div class="card-heading"><div><h3>今日老婆关系概况</h3><p>与群内「关系图」共用今日记录，箭头表示谁选择了谁。</p></div><button id="open-marriage" class="button secondary">查看今日关系图</button></div><div id="marriage-summary" class="summary-grid"></div></section>
+        </section>
+        <section id="marriage-panel" class="hidden">
+          <section class="card"><div class="card-heading"><div><h3>今日老婆关系图</h3><p id="marriage-note">显示今日抽中、挑中、强娶与求婚关系；仅显示群昵称。</p></div><div class="graph-legend"><span>● 抽中</span><span>● 挑中</span><span>● 强娶</span><span>● 求婚成功</span></div></div><div id="marriage-network" class="network"></div><p id="marriage-graph-note" class="muted small"></p></section>
+          <section class="card"><div class="card-heading"><h3>今日关系明细</h3><span id="marriage-count" class="muted"></span></div><div class="table-scroll"><table class="records-table"><thead><tr><th>发起者</th><th>关系</th><th>对象</th><th>记录时间</th></tr></thead><tbody id="marriage-records"></tbody></table></div></section>
+        </section>
+        <section id="graph-panel" class="card hidden">
+          <div class="card-heading"><div><h3>关系不是单行线</h3><p>箭头指向好感的对象；点击连线查看分数，拖动圆点整理布局。</p></div><label class="graph-filter">最低分 <input id="graph-min" type="range" min="0" max="100" value="0"><span id="graph-min-value">0</span></label></div>
+          <div id="network" class="network"></div><p id="graph-note" class="muted small"></p>
+        </section>
+        <section id="detail-panel" class="hidden">
+          <div class="detail-grid">
+            <section class="card relations-card"><div class="card-heading"><div><h3 id="relations-title">群友之间的来往</h3><p>点一条关系，展开它的来龙去脉。</p></div></div><div id="relation-list" class="relation-list"></div><p id="relation-note" class="muted small"></p></section>
+            <section class="card pair-card">
+              <div class="direction"><div class="person-picker"><label for="source-search">谁的好感</label><input id="source-search" type="search" placeholder="搜索昵称 / QQ号" autocomplete="off" aria-controls="source-select"><select id="source-select" aria-label="选择好感来源"></select><span id="source-matches" class="select-status" aria-live="polite"></span></div><button id="swap" class="swap" title="查看反方向" aria-label="交换好感方向">⇄</button><div class="person-picker"><label for="target-search">对谁</label><input id="target-search" type="search" placeholder="搜索昵称 / QQ号" autocomplete="off" aria-controls="target-select"><select id="target-select" aria-label="选择好感对象"></select><span id="target-matches" class="select-status" aria-live="polite"></span></div><button id="query-pair" class="button">查询</button></div>
+              <div id="pair-empty" class="pair-empty">选两位群友，看看这段关系是怎么长出来的。</div>
+              <div id="pair-content" class="hidden"><div class="score-heading"><div><span class="eyebrow">CURRENT AFFINITY</span><h3 id="pair-title"></h3></div><span id="reverse-score" class="reverse"></span></div><div class="score-line"><strong id="score-value">—</strong><span>/ 100</span><span id="mode-label" class="badge"></span></div><div id="components" class="components"></div><p class="formula-note">基础值 + 各项贡献 + 手动修正 = 当前分数（限制在 0～100）</p></div>
+            </section>
+          </div>
+          <section id="curve-panel" class="card hidden"><div class="card-heading"><div><h3>这段关系的温度</h3><p>把鼠标放到曲线上，看某个时间点的分数。</p></div><div class="chart-controls"><label><input id="full-scale" type="checkbox"> 固定 0～100</label><select id="days-select"><option value="7">最近 7 天</option><option value="30" selected>最近 30 天</option><option value="60">最近 60 天</option></select></div></div><div id="score-chart" class="score-chart"></div><p id="history-note" class="history-note"></p><div class="curve-legend"><span><i class="recorded"></i>实测点：当时实际计算</span><span><i class="reconstructed"></i>回算点：使用当前规则</span></div></section>
+          <section id="ledger-panel" class="card hidden"><div class="card-heading"><div><h3>每一分都有来处</h3><p>加分、减分、时间衰减与互动重估，分开看。</p></div><span id="ledger-count" class="muted"></span></div><div id="ledger" class="ledger"></div><div class="pagination"><button id="previous" class="button secondary">← 上一页</button><span id="page-label"></span><button id="next" class="button secondary">下一页 →</button></div></section>
+        </section>
+        <footer>今日老婆关系使用插件当前的今日记录；好感度最多留存60天，有效互动经过去重与限额，按UTC日汇总（北京时间08:00换日）。实验性好感度仅供娱乐。</footer>
+      </div>
+      <section id="logs-panel" class="hidden card"><div class="card-heading"><div><h3>今日老婆运行日志</h3><p id="logs-note">仅展示本插件启动后的日志。</p></div><div class="toolbar"><select id="logs-level" aria-label="日志级别"><option value="ALL">全部级别</option><option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select><input id="logs-search" type="search" placeholder="搜索日志内容"><label class="auto"><input id="logs-live" type="checkbox" checked> 实时刷新</label><button id="logs-refresh" class="button secondary">刷新日志</button></div></div><div id="log-list" class="log-list"></div></section>
+      <section id="config-panel" class="hidden"><section class="card"><div class="card-heading"><div><h3>配置中心</h3><p>与 AstrBot 插件配置使用同一份 config，保存前按配置类型校验。</p></div><button id="config-reload" class="button secondary">重新读取</button></div><form id="config-form"><div id="config-fields"></div><div class="config-actions"><span id="config-status" class="muted"></span><button id="config-save" class="button" type="submit">保存配置</button></div></form></section></section>
+      <section id="data-panel" class="hidden"><section class="card"><nav class="subtabs"><button data-storage="overview" class="active">存储空间概览</button><button data-storage="database">SQLite 数据库</button><button data-storage="json">JSON 文件</button></nav></section><div id="storage-overview"><div id="storage-metrics" class="metrics"></div><section class="card"><div class="card-heading"><div><h3>存储分区明细与管理</h3><p id="storage-note">查看插件数据目录中的数据库、JSON与模型缓存占用。</p></div><button id="storage-refresh" class="button secondary">刷新概览</button></div><div class="table-scroll"><table class="records-table"><thead><tr><th>数据分区</th><th>文件数量</th><th>占用空间</th><th>空间占比</th><th>用途</th><th>操作</th></tr></thead><tbody id="storage-partitions"></tbody></table></div></section></div><section id="storage-browser" class="card hidden"><div class="data-browser"><div id="data-sources" class="data-sources"></div><div class="data-content"><div class="card-heading"><div><h3 id="data-title">选择数据源</h3><p id="data-description"></p></div><div id="json-breadcrumb" class="toolbar"></div></div><div id="data-content"></div><div id="data-pagination" class="pagination hidden"><button id="data-prev" class="button secondary">上一页</button><span id="data-page"></span><button id="data-next" class="button secondary">下一页</button></div></div></div></section></section>
+    </main>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

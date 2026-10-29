@@ -65,12 +65,17 @@ def match_qq_official_target_command(event: AstrMessageEvent) -> str | None:
     if not is_qq_official_event(event):
         return None
     match = re.match(
-        r"^\s*/?(强娶|qiangqu|forcemarry|求婚|qh|propose)(?=<@!?[A-Za-z0-9_-]+>)",
+        r"^\s*/?(强娶|qiangqu|forcemarry|求婚|qh|propose|查看好感度|affinity|调整好感度|setaffinity)(?=<@!?[A-Za-z0-9_-]+>)",
         str(getattr(event, "message_str", "") or ""),
     )
     if match is None:
         return None
-    return "force_marry" if match[1] in {"强娶", "qiangqu", "forcemarry"} else "propose_command"
+    command = match[1]
+    if command in {"查看好感度", "affinity"}:
+        return "show_affinity"
+    if command in {"调整好感度", "setaffinity"}:
+        return "adjust_affinity"
+    return "force_marry" if command in {"强娶", "qiangqu", "forcemarry"} else "propose_command"
 
 
 def extract_target_id_from_message(event: AstrMessageEvent, plugin=None) -> str | None:

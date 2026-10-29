@@ -435,6 +435,10 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
 
             _delete_requests_by_proposer(group_id, proposer_id)
             await _resolve_proposal(plugin_instance, req, "accepted")
+            affinity = getattr(plugin_instance, "affinity", None)
+            if affinity is not None:
+                await affinity.game(event, "accepted", proposer_id, user_id,
+                                    req.get("proposal_id") or f"{proposer_id}:{user_id}:{req['created_at']}")
             debug_log(plugin_instance, "propose", f"accepted group={group_id} proposer={proposer_id} target={user_id} daily_limit={daily_limit} proposer_records={sum(r['user_id'] == proposer_id for r in group_records)} target_records={sum(r['user_id'] == user_id for r in group_records)}")
 
             event.stop_event()
@@ -451,6 +455,10 @@ async def handle_propose_response(plugin_instance, event: AstrMessageEvent):
             target_name = req["target_name"]
             _delete_request(group_id, user_id)
             await _resolve_proposal(plugin_instance, req, "rejected")
+            affinity = getattr(plugin_instance, "affinity", None)
+            if affinity is not None:
+                await affinity.game(event, "rejected", proposer_id, user_id,
+                                    req.get("proposal_id") or f"{proposer_id}:{user_id}:{req['created_at']}")
 
             if group_id not in force_confirm_requests:
                 force_confirm_requests[group_id] = {}

@@ -25,6 +25,8 @@ from .src.command.relationdiagram import cmd_show_graph
 from .src.command.rbqrank import cmd_rbq_ranking
 from .src.command.proposal_rank import cmd_proposal_ranking
 from .src.db import ProposalStore
+from .src.affinity import AffinityService
+from .src.command.affinity import cmd_affinity
 from .src.command.reset_propose_cd import cmd_reset_propose_cd
 from .src.platforms.user_profiles import (
     get_avatar_source,
@@ -164,6 +166,14 @@ class RandomWifePlugin(Star):
         self._active_users_last_trim_at = 0.0
         self._active_users_trim_interval_seconds = ACTIVE_USERS_TRIM_INTERVAL_SECONDS
         start_active_users_save_task(self)
+        self.affinity = AffinityService(self, logger)
+        self.affinity_dashboard = None
+        try:
+            from .src.web.dashboard import AffinityDashboard
+            self.affinity_dashboard = AffinityDashboard(self)
+            self.affinity_dashboard.register()
+        except (ImportError, AttributeError) as exc:
+            logger.warning(f"[wifepicker.affinity.page] 当前 AstrBot 未提供兼容的插件页面接口：{exc}")
 
         self._keyword_router = KeywordRouter(routes=_DEFAULT_KEYWORD_ROUTES)
         self._keyword_handlers = {
@@ -178,6 +188,8 @@ class RandomWifePlugin(Star):
             "reset_force_cd": self._cmd_reset_force_cd,
             "propose_command": self.propose_command,
             "pick_wife": self._cmd_pick_wife,
+            "show_affinity": self.show_affinity,
+            "adjust_affinity": self.adjust_affinity,
             "breakup": self._cmd_breakup,
         }
         self._keyword_trigger_block_prefixes = ("/", "!", "！")
@@ -252,6 +264,12 @@ class RandomWifePlugin(Star):
                 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def track_active(self, event: AstrMessageEvent):
+        dashboard = getattr(self, "affinity_dashboard", None)
+        if dashboard is not None:
+            dashboard.profiles.observe(event)
+        affinity = getattr(self, "affinity", None)
+        if affinity is not None:
+            affinity.observe(event)
         remember_user_profile(self, event)
         record_active(self, event)
         async for result in handle_breakup_response(self, event):
@@ -667,6 +685,18 @@ class RandomWifePlugin(Star):
         async for result in cmd_pick_wife(self, event):
             yield result
 
+    @filter.command("查看好感度", alias={"affinity"})
+    async def show_affinity(self, event: AstrMessageEvent):
+        event.stop_event()
+        async for result in cmd_affinity(self, event):
+            yield result
+
+    @filter.command("调整好感度", alias={"setaffinity","查询好感度"})
+    async def adjust_affinity(self, event: AstrMessageEvent):
+        event.stop_event()
+        async for result in cmd_affinity(self, event, adjust=True):
+            yield result
+
     async def _proposal_cleanup_loop(self):
         while True:
             await asyncio.sleep(3600)
@@ -676,6 +706,12 @@ class RandomWifePlugin(Star):
                 logger.error(f"清理过期求婚统计失败: {exc}")
 
     async def terminate(self):
+        dashboard = getattr(self, "affinity_dashboard", None)
+        if dashboard is not None:
+            dashboard.close()
+        affinity = getattr(self, "affinity", None)
+        if affinity is not None:
+            await affinity.close()
         if self._proposal_cleanup_task is not None:
             self._proposal_cleanup_task.cancel()
             await asyncio.gather(self._proposal_cleanup_task, return_exceptions=True)
