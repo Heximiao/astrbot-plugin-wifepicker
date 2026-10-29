@@ -17,7 +17,7 @@ DEFAULT_LANGUAGE = "zh-CN"
 MESSAGES: dict[str, dict[str, str]] = {
     "zh-CN": {
         "affinity_disabled": "群友好感度是实验性功能，默认关闭。请在插件配置的「群友好感度（实验性功能）」中开启。",
-        "affinity_target": "请 @ 一位其他群友，不能选择自己、全体成员或机器人。",
+        "affinity_target": "请在输入 查询好感度 之后再 @ 一位其他群友，不能选择自己、全体成员或机器人。",
         "affinity_empty": "🌸 还没查到你们的好感度小秘密呢~\n多互相 @、引用聊聊天，或者试试「求婚 @对方」吧！❤️",
         "affinity_member": "这位群友",
         "affinity_result": "🌸 偷偷帮你瞄了一眼~\n【{name}】对【{sender_name}】的好感度是：{score}/100 ❤️\n{hint}\n💕 小雷达仅供娱乐，心意还得靠相处哦~",

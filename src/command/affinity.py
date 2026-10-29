@@ -16,6 +16,10 @@ def adjustment_value(event):
     text = " ".join(str(value(c, "text", "")) for c in components if component_kind(c) == "plain")
     if not components:
         text = str(event.message_str)
+    if str(getattr(event, "get_platform_name", lambda: "")()).lower() == "telegram":
+        # Telegram keeps @username mentions in Plain text. Remove the whole
+        # token before numeric mentions, so digits in usernames cannot leak.
+        text = re.sub(r"(?<!\S)@[A-Za-z0-9_]+(?=\s|$)", " ", text)
     text = re.sub(r"<@!?[^>]+>|\[CQ:[^\]]+\]|@\d+", " ", text)
     text = re.sub(r"^\s*[/!！]*\s*(?:调整好感度|setaffinity)\s*", "", text, flags=re.I)
     match = re.fullmatch(r"\s*([+-]?\d{1,3}(?:\.\d)?)\s*", text)

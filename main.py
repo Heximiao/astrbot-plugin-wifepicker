@@ -685,13 +685,13 @@ class RandomWifePlugin(Star):
         async for result in cmd_pick_wife(self, event):
             yield result
 
-    @filter.command("查看好感度", alias={"affinity"})
+    @filter.command("查看好感度", alias={"affinity","查询好感度"})
     async def show_affinity(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_affinity(self, event):
             yield result
 
-    @filter.command("调整好感度", alias={"setaffinity","查询好感度"})
+    @filter.command("调整好感度", alias={"setaffinity"})
     async def adjust_affinity(self, event: AstrMessageEvent):
         event.stop_event()
         async for result in cmd_affinity(self, event, adjust=True):
