@@ -70,29 +70,34 @@ async def cmd_rbq_ranking(plugin_instance, event: AstrMessageEvent):
     with open(template_path, "r", encoding="utf-8") as f:
         template_content = f.read()
 
-    try:
-        header_h = 100
-        item_h = 60
-        footer_h = 50
-        rank_width = 400
-        dynamic_height = header_h + (len(top_10) * item_h) + footer_h
+    # Keep these dimensions in sync with rbq_ranking.html. Older renderers
+    # ignore viewport_height and force a 720px viewport, so full_page alone
+    # leaves blank padding on short rankings. An exact clip works on both.
+    render_width = 400
+    render_height = 67 + len(top_10) * 62 + 35
 
+    try:
         url = await plugin_instance.html_render(
             template_content,
             {
                 "group_id": group_id,
                 "ranking": top_10,
                 "title": tr(plugin_instance, "ranking_title"),
+                "render_height": render_height,
             },
             options={
                 "type": "png",
                 "quality": None,
-                "full_page": False,
+                # full_page keeps rankings taller than the legacy viewport
+                # available; clip removes its extra padding on short rankings.
+                "full_page": True,
+                "viewport_width": render_width,
+                "viewport_height": render_height,
                 "clip": {
                     "x": 0,
                     "y": 0,
-                    "width": rank_width,
-                    "height": dynamic_height,
+                    "width": render_width,
+                    "height": render_height,
                 },
                 "scale": "device",
                 "device_scale_factor_level": "ultra",

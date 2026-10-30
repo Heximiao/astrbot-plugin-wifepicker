@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width={{ render_width }}, height={{ render_height }}, initial-scale=1">
     <script>
         {{ vis_js_content | safe }}
     </script>
@@ -11,8 +12,8 @@
         html {
             margin: 0;
             padding: 0;
-            width: 100%;
-            height: 100%;
+            width: {{ render_width }}px;
+            height: {{ render_height }}px;
             background: #ffffff;
             overflow: hidden;
             font-family: "Microsoft YaHei", sans-serif;
@@ -21,7 +22,7 @@
         #network-container {
             width: 100%;
             /* 预留 80px 给 header，保证不和图谱重叠 */
-            height: calc(100vh - 80px);
+            height: {{ render_height - 80 }}px;
             position: relative;
         }
 
@@ -123,13 +124,34 @@
                     iterations: {{ iterations }},
                     updateInterval: 25,
                     onlyDynamicEdges: false,
-                fit: true
+                    fit: true
                 }
             }
         };
         const network = new vis.Network(container, data, options);
         network.once("stabilizationIterationsDone", function () {
-            network.fit();
+            // Keep the fitted layout still while the render service screenshots it.
+            network.setOptions({ physics: { enabled: false } });
+            network.redraw();
+            // Include the full nickname bounds, not just the node positions.
+            // A small graph with a long nickname can otherwise touch the edge.
+            if (nodes.length) {
+                const boxes = nodes.map(node => network.getBoundingBox(node.id));
+                const left = Math.min(...boxes.map(box => box.left));
+                const right = Math.max(...boxes.map(box => box.right));
+                const top = Math.min(...boxes.map(box => box.top));
+                const bottom = Math.max(...boxes.map(box => box.bottom));
+                const scale = Math.min(
+                    1,
+                    (container.clientWidth - 48) / Math.max(1, right - left),
+                    (container.clientHeight - 48) / Math.max(1, bottom - top)
+                );
+                network.moveTo({
+                    position: { x: (left + right) / 2, y: (top + bottom) / 2 },
+                    scale,
+                    animation: false
+                });
+            }
         });
     </script>
 </body>

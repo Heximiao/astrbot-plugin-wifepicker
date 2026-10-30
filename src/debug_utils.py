@@ -70,7 +70,7 @@ async def run_debug_graph(plugin_instance, event):
             "1027": "Katie (1027)",
         }
     
-    # 1. 渲染并保存 HTML 供检查
+    # 1. 只读取模板和脚本，直接交给渲染服务，不保存调试 HTML。
     template_path = os.path.join(curr_dir, "template", "graph_template.html")
     if not os.path.exists(template_path):
         yield event.plain_result(f"错误：找不到模板文件 {template_path}")
@@ -79,21 +79,12 @@ async def run_debug_graph(plugin_instance, event):
     with open(template_path, "r", encoding="utf-8") as f:
         template_content = f.read()
 
-    import jinja2
-    env = jinja2.Environment()
-    template = env.from_string(template_content)
-    html_content = template.render(
-        group_name="Debug Group",
-        records=mock_records,
-        user_map=mock_user_map,
-        iterations=150
-    )
-    
-    debug_html_path = os.path.join(curr_dir, "debug_output.html")
-    with open(debug_html_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
-    yield event.plain_result(f"调试中... HTML 已保存至 {debug_html_path}")
+    vis_js_path = os.path.join(curr_dir, "vis-network.min.js")
+    if not os.path.exists(vis_js_path):
+        yield event.plain_result(f"错误：找不到 JS 文件 {vis_js_path}")
+        return
+    with open(vis_js_path, "r", encoding="utf-8") as f:
+        vis_js_content = f.read()
 
     # 2. 计算动态高度
     unique_nodes = set()
@@ -102,21 +93,27 @@ async def run_debug_graph(plugin_instance, event):
         unique_nodes.add(str(r.get("wife_id")))
     node_count = len(unique_nodes)
     
-    view_height = 1080
-    if node_count > 10:
-        view_height = 1080 + (node_count - 10) * 60
+    render_width = 1280
+    render_height = 720 + max(0, node_count - 20) * 24
 
     # 3. 调用插件实例的渲染 API
     try:
         url = await plugin_instance.html_render(template_content, {
+            "vis_js_content": vis_js_content,
             "group_name": "Debug Group",
             "records": mock_records,
             "user_map": mock_user_map,
-            "iterations": 150
+            "avatar_map": {},
+            "iterations": 150,
+            "render_width": render_width,
+            "render_height": render_height,
         }, options={
-            "viewport": {"width": 1920, "height": view_height},
-            "type": "jpeg",
-            "quality": 100,
+            "viewport_width": render_width,
+            "viewport_height": render_height,
+            "full_page": True,
+            "type": "png",
+            "quality": None,
+            "scale": "device",
             "device_scale_factor_level": "ultra",
         })
         yield event.image_result(url)
