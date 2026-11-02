@@ -95,6 +95,12 @@
             "step": 10
         }
     },
+    "avatar_inline": {
+        "type": "bool",
+        "description": "关系图头像内嵌为 base64",
+        "hint": "部分 T2I 渲染器（例如只等待固定时间就截图的本地快照渲染）来不及加载外链头像，会导致关系图节点只剩空心圆，头像不显示。开启后会先下载头像并转成 data URI，消除异步加载依赖；代价是每次生成多花约 1 秒。浏览器/远程渲染环境可关闭。",
+        "default": true
+    },
     "keyword_trigger_enabled": {
         "type": "bool",
         "description": "关键词触发",
