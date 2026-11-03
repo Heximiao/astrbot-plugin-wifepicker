@@ -1,4 +1,8 @@
+import asyncio
+import base64
 import os
+from collections import OrderedDict
+from time import monotonic
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
@@ -13,6 +17,94 @@ from ..platforms.user_profiles import (
     get_platform_group_name,
     get_platform_members,
 )
+
+
+_AVATAR_CACHE_TTL = 10800
+_AVATAR_CACHE_MAX_ENTRIES = 256
+_AVATAR_CACHE_MAX_ENTRY_SIZE = 128 * 1024
+_AVATAR_CACHE: OrderedDict[str, tuple[float, str]] = OrderedDict()
+
+
+async def _inline_avatars(avatars):
+    """把头像下载并转成 data URI。
+
+    部分 T2I 渲染器（例如本地快照式渲染）只等待固定时间就截图，
+    而 vis-network 的头像是外链异步加载的，往往来不及绘制，
+    节点上就只剩边框和一个空心圆。转成 data URI 后，页面解码
+    头像时无需再等待外链请求。
+    """
+    result = {}
+    if not avatars:
+        return result
+
+    try:
+        import aiohttp
+    except Exception:
+        return {k: v for k, v in avatars.items() if v}
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        ),
+        "Referer": "https://qzone.qq.com/",
+    }
+    timeout = aiohttp.ClientTimeout(total=10)
+
+    pending = {}
+    for uid, url in avatars.items():
+        if not url:
+            continue
+        if url.startswith("data:image/"):
+            result[uid] = url
+            continue
+        cached = _AVATAR_CACHE.get(url)
+        if cached and cached[0] > monotonic():
+            _AVATAR_CACHE.move_to_end(url)
+            result[uid] = cached[1]
+        else:
+            _AVATAR_CACHE.pop(url, None)
+            pending.setdefault(url, []).append(uid)
+
+    if not pending:
+        return result
+
+    sem = asyncio.Semaphore(8)
+
+    async def download(session, url, user_ids):
+        uid = user_ids[0]
+        try:
+            async with sem:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"[avatar] {uid} HTTP {resp.status}")
+                        return
+                    raw_bytes = await resp.read()
+                    if len(raw_bytes) < 100:
+                        logger.warning(f"[avatar] {uid} 内容过短 {len(raw_bytes)}B")
+                        return
+                    mime = resp.headers.get("Content-Type", "image/jpeg")
+                    if "image" not in mime:
+                        mime = "image/jpeg"
+            data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode()}"
+            if len(data_uri) <= _AVATAR_CACHE_MAX_ENTRY_SIZE:
+                _AVATAR_CACHE[url] = (monotonic() + _AVATAR_CACHE_TTL, data_uri)
+                _AVATAR_CACHE.move_to_end(url)
+                if len(_AVATAR_CACHE) > _AVATAR_CACHE_MAX_ENTRIES:
+                    _AVATAR_CACHE.popitem(last=False)
+            for uid in user_ids:
+                result[uid] = data_uri
+        except Exception as exc:
+            logger.warning(f"[avatar] {uid} 下载失败: {exc}")
+
+    async with aiohttp.ClientSession(
+        timeout=timeout, headers=headers, cookie_jar=aiohttp.DummyCookieJar()
+    ) as session:
+        await asyncio.gather(
+            *(download(session, url, user_ids) for url, user_ids in pending.items())
+        )
+    logger.info(f"[avatar] inline {len(result)}/{len(avatars)} 成功")
+    return result
 
 
 async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
@@ -68,6 +160,8 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
         unique_nodes.add(str(r.get("user_id")))
         unique_nodes.add(str(r.get("wife_id")))
     avatars = await get_avatar_sources(plugin_instance, event, unique_nodes)
+    if plugin_instance.config.get("avatar_inline", False):
+        avatars = await _inline_avatars(avatars)
     for uid in unique_nodes:
         user_map.setdefault(uid, get_display_name(plugin_instance, event, uid))
         avatar_url = avatars.get(uid)
