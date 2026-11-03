@@ -1,6 +1,8 @@
 import asyncio
 import base64
 import os
+from collections import OrderedDict
+from time import monotonic
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
@@ -17,13 +19,19 @@ from ..platforms.user_profiles import (
 )
 
 
+_AVATAR_CACHE_TTL = 10800
+_AVATAR_CACHE_MAX_ENTRIES = 256
+_AVATAR_CACHE_MAX_ENTRY_SIZE = 128 * 1024
+_AVATAR_CACHE: OrderedDict[str, tuple[float, str]] = OrderedDict()
+
+
 async def _inline_avatars(avatars):
     """把头像下载并转成 data URI。
 
     部分 T2I 渲染器（例如本地快照式渲染）只等待固定时间就截图，
     而 vis-network 的头像是外链异步加载的，往往来不及绘制，
-    节点上就只剩边框和一个空心圆。转成 data URI 后页面不再有
-    网络请求，network 初始化完成即可直接画出头像。
+    节点上就只剩边框和一个空心圆。转成 data URI 后，页面解码
+    头像时无需再等待外链请求。
     """
     result = {}
     if not avatars:
@@ -43,15 +51,31 @@ async def _inline_avatars(avatars):
     }
     timeout = aiohttp.ClientTimeout(total=10)
 
-    async def one(uid, url):
+    pending = {}
+    for uid, url in avatars.items():
         if not url:
-            return
+            continue
         if url.startswith("data:image/"):
             result[uid] = url
-            return
+            continue
+        cached = _AVATAR_CACHE.get(url)
+        if cached and cached[0] > monotonic():
+            _AVATAR_CACHE.move_to_end(url)
+            result[uid] = cached[1]
+        else:
+            _AVATAR_CACHE.pop(url, None)
+            pending.setdefault(url, []).append(uid)
+
+    if not pending:
+        return result
+
+    sem = asyncio.Semaphore(8)
+
+    async def download(session, url, user_ids):
+        uid = user_ids[0]
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as sess:
-                async with sess.get(url, headers=headers) as resp:
+            async with sem:
+                async with session.get(url) as resp:
                     if resp.status != 200:
                         logger.warning(f"[avatar] {uid} HTTP {resp.status}")
                         return
@@ -62,23 +86,26 @@ async def _inline_avatars(avatars):
                     mime = resp.headers.get("Content-Type", "image/jpeg")
                     if "image" not in mime:
                         mime = "image/jpeg"
-                    result[uid] = "data:%s;base64,%s" % (
-                        mime,
-                        base64.b64encode(raw_bytes).decode(),
-                    )
+            data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode()}"
+            if len(data_uri) <= _AVATAR_CACHE_MAX_ENTRY_SIZE:
+                _AVATAR_CACHE[url] = (monotonic() + _AVATAR_CACHE_TTL, data_uri)
+                _AVATAR_CACHE.move_to_end(url)
+                if len(_AVATAR_CACHE) > _AVATAR_CACHE_MAX_ENTRIES:
+                    _AVATAR_CACHE.popitem(last=False)
+            for uid in user_ids:
+                result[uid] = data_uri
         except Exception as exc:
             logger.warning(f"[avatar] {uid} 下载失败: {exc}")
 
-    # 限流，避免群人数多时一次性开几十个连接
-    sem = asyncio.Semaphore(8)
-
-    async def limited(uid, url):
-        async with sem:
-            await one(uid, url)
-
-    await asyncio.gather(*(limited(uid, url) for uid, url in avatars.items()))
+    async with aiohttp.ClientSession(
+        timeout=timeout, headers=headers, cookie_jar=aiohttp.DummyCookieJar()
+    ) as session:
+        await asyncio.gather(
+            *(download(session, url, user_ids) for url, user_ids in pending.items())
+        )
     logger.info(f"[avatar] inline {len(result)}/{len(avatars)} 成功")
     return result
+
 
 async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
     group_id = str(event.get_group_id())
@@ -133,7 +160,7 @@ async def cmd_show_graph(plugin_instance, event: AstrMessageEvent):
         unique_nodes.add(str(r.get("user_id")))
         unique_nodes.add(str(r.get("wife_id")))
     avatars = await get_avatar_sources(plugin_instance, event, unique_nodes)
-    if plugin_instance.config.get("avatar_inline", True):
+    if plugin_instance.config.get("avatar_inline", False):
         avatars = await _inline_avatars(avatars)
     for uid in unique_nodes:
         user_map.setdefault(uid, get_display_name(plugin_instance, event, uid))

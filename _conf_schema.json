@@ -95,12 +95,6 @@
             "step": 10
         }
     },
-    "avatar_inline": {
-        "type": "bool",
-        "description": "关系图头像内嵌为 base64",
-        "hint": "部分 T2I 渲染器（例如只等待固定时间就截图的本地快照渲染）来不及加载外链头像，会导致关系图节点只剩空心圆，头像不显示。开启后会先下载头像并转成 data URI，消除异步加载依赖；代价是每次生成多花约 1 秒。浏览器/远程渲染环境可关闭。",
-        "default": true
-    },
     "keyword_trigger_enabled": {
         "type": "bool",
         "description": "关键词触发",
@@ -223,6 +217,12 @@
                 "default": "https://pypi.tuna.tsinghua.edu.cn/simple"
             }
         }
+    },
+    "avatar_inline": {
+        "type": "bool",
+        "description": "关系图头像内嵌为 Base64",
+        "hint": "默认关闭。若 T2I 截图时外链头像来不及加载（头像是空的情况下），可开启此项。Bot 会先下载头像并转为 Base64，使用有容量上限的本地内存缓存，同一地址的头像最多复用 3 小时。使用远程 T2I 时，即使命中本地缓存，每次渲染仍会发送头像内容，节点越多，请求传输量越大。",
+        "default": false
     },
     "debug_enabled": {
         "type": "bool",
